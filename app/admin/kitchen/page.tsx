@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabaseClient'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Utensils, Printer, Clock, CheckCircle } from 'lucide-react'
+import { Printer, Clock, Utensils } from 'lucide-react'
 
 export default function KitchenPage() {
   const [orders, setOrders] = useState<any[]>([])
@@ -13,7 +13,6 @@ export default function KitchenPage() {
 
   useEffect(() => {
     const fetchOrders = async () => {
-      // Get orders that haven't been served yet
       const { data } = await supabase
         .from('orders')
         .select('*')
@@ -26,13 +25,15 @@ export default function KitchenPage() {
 
     fetchOrders()
 
-    // Real-time listener: Triggers the "Beep" for new orders [cite: 57, 58]
     const channel = supabase
       .channel('kitchen_sync')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, (payload) => {
         setOrders(prev => [...prev, payload.new])
-        const audio = new Audio('/beep.mp3')
-        audio.play().catch(() => console.log("Audio alert ready"))
+        // FIX: Only play audio in the browser
+        if (typeof window !== 'undefined') {
+            const audio = new Audio('/beep.mp3')
+            audio.play().catch(() => console.log("Interaction needed for audio"))
+        }
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, () => {
         fetchOrders()
@@ -46,7 +47,6 @@ export default function KitchenPage() {
     await supabase.from('orders').update({ status: newStatus }).eq('id', orderId)
   }
 
-  // Mimics the "Thermal Printer" tech signal [cite: 63, 64]
   const printTicket = () => window.print()
 
   if (loading) return <div className="p-20 text-center text-slate-500">Connecting to Kitchen...</div>
@@ -57,7 +57,7 @@ export default function KitchenPage() {
         <div className="flex justify-between items-center mb-10 bg-slate-900 p-6 rounded-3xl border border-white/10">
           <div>
             <h1 className="text-3xl font-black italic tracking-tighter text-orange-500 uppercase">Kitchen Display System</h1>
-            <p className="text-slate-400 text-sm">Real-time order tickets for venue operations [cite: 31, 50]</p>
+            <p className="text-slate-400 text-sm">Real-time order tickets</p>
           </div>
           <Badge className="bg-orange-600 text-white px-6 py-3 text-xl rounded-2xl animate-pulse">
             {orders.length} ACTIVE TICKETS
@@ -70,7 +70,7 @@ export default function KitchenPage() {
               <div className="bg-slate-800 p-5 flex justify-between items-center border-b border-white/5">
                 <span className="font-black text-2xl">TABLE {order.table_id}</span>
                 <Button size="sm" variant="ghost" onClick={printTicket} className="text-slate-400">
-                  <Printer className="w-5 h-5 mr-2" /> PRINT [cite: 60]
+                  <Printer className="w-5 h-5 mr-2" /> PRINT
                 </Button>
               </div>
 
@@ -96,12 +96,19 @@ export default function KitchenPage() {
                   )}
                 </div>
                 <p className="text-center text-[10px] text-slate-500 mt-4 uppercase font-black tracking-widest">
-                  <Clock className="w-3 h-3 inline mr-1" /> Order Recieved: {new Date(order.created_at).toLocaleTimeString()}
+                  <Clock className="w-3 h-3 inline mr-1" /> {new Date(order.created_at).toLocaleTimeString()}
                 </p>
               </CardContent>
             </Card>
           ))}
         </div>
+        
+        {orders.length === 0 && (
+            <div className="text-center py-20 opacity-50">
+                <Utensils className="w-20 h-20 mx-auto mb-4 text-slate-700" />
+                <h2 className="text-2xl font-bold text-slate-700">Kitchen is Clear</h2>
+            </div>
+        )}
       </div>
     </div>
   )

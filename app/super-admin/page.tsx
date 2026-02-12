@@ -5,11 +5,16 @@ import { supabase } from '@/lib/supabaseClient'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { ShieldCheck, Store, Trash2, Edit3, CheckCircle2, XCircle } from 'lucide-react'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { ShieldCheck, Trash2, Edit3, CheckCircle2, XCircle } from 'lucide-react'
 
 export default function SuperAdmin() {
   const [venues, setVenues] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
+  
+  // Edit State
+  const [editingVenue, setEditingVenue] = useState<any>(null)
+  const [isEditOpen, setIsEditOpen] = useState(false)
 
   useEffect(() => {
     fetchVenues()
@@ -18,7 +23,20 @@ export default function SuperAdmin() {
   const fetchVenues = async () => {
     const { data } = await supabase.from('venues').select('*').order('name')
     if (data) setVenues(data)
-    setLoading(false)
+  }
+
+  const handleEditClick = (venue: any) => {
+    setEditingVenue(venue)
+    setIsEditOpen(true)
+  }
+
+  const saveEdit = async () => {
+    await supabase.from('venues').update({ 
+        name: editingVenue.name,
+        location: editingVenue.location 
+    }).eq('id', editingVenue.id)
+    setIsEditOpen(false)
+    fetchVenues()
   }
 
   const toggleApproval = async (id: string, currentStatus: boolean) => {
@@ -27,13 +45,11 @@ export default function SuperAdmin() {
   }
 
   const deleteVenue = async (id: string) => {
-    if (confirm("Are you sure? This will remove the venue from the platform.")) {
+    if (confirm("Permanently delete this venue?")) {
       await supabase.from('venues').delete().eq('id', id)
       fetchVenues()
     }
   }
-
-  if (loading) return <div className="p-20 text-center font-bold">Accessing Secure Records...</div>
 
   return (
     <div className="min-h-screen bg-slate-50 p-8 pt-24">
@@ -43,7 +59,6 @@ export default function SuperAdmin() {
             <h1 className="text-3xl font-black uppercase tracking-tighter flex items-center gap-3">
               <ShieldCheck className="text-blue-500 w-8 h-8" /> Super Admin
             </h1>
-            <p className="text-slate-400 text-sm mt-1">Platform-wide Venue Management</p>
           </div>
           <Badge className="bg-blue-600 px-4 py-2">System Active</Badge>
         </div>
@@ -71,14 +86,13 @@ export default function SuperAdmin() {
                     {venue.is_featured ? <CheckCircle2 className="w-4 h-4 mr-2"/> : <XCircle className="w-4 h-4 mr-2"/>}
                     {venue.is_featured ? 'Approved' : 'Pending'}
                   </Button>
-                  <Button variant="ghost" className="text-slate-400 hover:text-blue-600">
+                  
+                  {/* WORKING EDIT BUTTON */}
+                  <Button variant="ghost" onClick={() => handleEditClick(venue)} className="text-slate-400 hover:text-blue-600">
                     <Edit3 className="w-5 h-5" />
                   </Button>
-                  <Button 
-                    variant="ghost" 
-                    onClick={() => deleteVenue(venue.id)}
-                    className="text-slate-400 hover:text-red-600"
-                  >
+                  
+                  <Button variant="ghost" onClick={() => deleteVenue(venue.id)} className="text-slate-400 hover:text-red-600">
                     <Trash2 className="w-5 h-5" />
                   </Button>
                 </div>
@@ -86,6 +100,20 @@ export default function SuperAdmin() {
             </Card>
           ))}
         </div>
+
+        {/* EDIT DIALOG */}
+        <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+            <DialogContent>
+                <DialogHeader><DialogTitle>Edit Venue</DialogTitle></DialogHeader>
+                {editingVenue && (
+                    <div className="space-y-4 py-4">
+                        <Input value={editingVenue.name} onChange={e => setEditingVenue({...editingVenue, name: e.target.value})} />
+                        <Input value={editingVenue.location} onChange={e => setEditingVenue({...editingVenue, location: e.target.value})} />
+                        <Button onClick={saveEdit} className="w-full bg-blue-600">Save Changes</Button>
+                    </div>
+                )}
+            </DialogContent>
+        </Dialog>
       </div>
     </div>
   )

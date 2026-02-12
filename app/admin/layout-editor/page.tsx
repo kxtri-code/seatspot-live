@@ -4,11 +4,10 @@ import { useState, useRef } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Save, MousePointer2 } from 'lucide-react'
+import { Save, MousePointer2, Trash2 } from 'lucide-react'
 
 export default function LayoutEditor() {
   const [tables, setTables] = useState<any[]>([])
-  // In a real app, you would upload this image to Supabase Storage first
   const [layoutImage, setLayoutImage] = useState('/layout.jpg') 
   const [newLabel, setNewLabel] = useState('')
   const containerRef = useRef<HTMLDivElement>(null)
@@ -19,10 +18,10 @@ export default function LayoutEditor() {
         return
     }
     
-    // Calculate click position relative to the image
     const rect = containerRef.current.getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const y = e.clientY - rect.top
+    // FIX: Math.round() removes the decimals that caused the error
+    const x = Math.round(e.clientX - rect.left)
+    const y = Math.round(e.clientY - rect.top)
 
     const newTable = {
       label: newLabel,
@@ -35,11 +34,14 @@ export default function LayoutEditor() {
     setNewLabel('') 
   }
 
+  const undoLast = () => {
+    setTables(tables.slice(0, -1))
+  }
+
   const saveToDatabase = async () => {
-    // Saves these coordinates to the 'seats' table
     const { error } = await supabase.from('seats').insert(tables)
     if (!error) {
-        alert("Floor plan updated! Guests can now see these tables.")
+        alert("Floor plan updated successfully!")
         setTables([])
     } else {
         alert("Error: " + error.message)
@@ -52,7 +54,7 @@ export default function LayoutEditor() {
         <div className="flex justify-between items-center bg-slate-800 p-6 rounded-[2rem] border border-white/10">
           <div>
              <h2 className="text-2xl font-black uppercase italic">Floor Plan Digitizer</h2>
-             <p className="text-sm text-slate-400">Step 1: Enter Label. Step 2: Click Map. Step 3: Save.</p>
+             <p className="text-sm text-slate-400">Step 1: Enter Label. Step 2: Click Map. Step 3: Publish.</p>
           </div>
           <div className="flex gap-4">
             <Input 
@@ -61,27 +63,27 @@ export default function LayoutEditor() {
               onChange={(e) => setNewLabel(e.target.value)}
               className="w-32 bg-white/10 border-white/20 text-white"
             />
+             <Button onClick={undoLast} variant="ghost" className="text-red-400">
+              <Trash2 className="w-4 h-4" />
+            </Button>
             <Button onClick={saveToDatabase} className="bg-green-600 hover:bg-green-700 font-bold">
               <Save className="w-4 h-4 mr-2" /> PUBLISH
             </Button>
           </div>
         </div>
 
-        {/* The "Sheet of Plastic" Overlay [cite: 28] */}
         <div 
           ref={containerRef}
           onClick={handlePinTable}
           className="relative rounded-3xl overflow-hidden border-2 border-white/20 shadow-2xl cursor-crosshair bg-slate-800 mx-auto"
           style={{ width: '600px', height: '400px' }}
         >
-          {/* This represents the "Photo" of the floor plan [cite: 26] */}
           <img 
             src={layoutImage} 
             className="w-full h-full object-cover opacity-60 pointer-events-none" 
             alt="Floor Plan" 
           />
           
-          {/* The Pins */}
           {tables.map((table, i) => (
             <div 
               key={i}

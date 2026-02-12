@@ -11,6 +11,18 @@ export default function KitchenPage() {
   const [orders, setOrders] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
+  // Audio Helper - Safe for Next.js
+  const playAlert = () => {
+    if (typeof window !== 'undefined') {
+      try {
+        const audio = new Audio('/beep.mp3')
+        audio.play().catch(e => console.log("Audio blocked: user must interact first"))
+      } catch (e) {
+        console.error("Audio error", e)
+      }
+    }
+  }
+
   useEffect(() => {
     const fetchOrders = async () => {
       const { data } = await supabase
@@ -29,11 +41,7 @@ export default function KitchenPage() {
       .channel('kitchen_sync')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, (payload) => {
         setOrders(prev => [...prev, payload.new])
-        // FIX: Only play audio in the browser
-        if (typeof window !== 'undefined') {
-            const audio = new Audio('/beep.mp3')
-            audio.play().catch(() => console.log("Interaction needed for audio"))
-        }
+        playAlert() // Call safe function
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, () => {
         fetchOrders()
@@ -47,9 +55,11 @@ export default function KitchenPage() {
     await supabase.from('orders').update({ status: newStatus }).eq('id', orderId)
   }
 
-  const printTicket = () => window.print()
+  const printTicket = () => {
+    if (typeof window !== 'undefined') window.print()
+  }
 
-  if (loading) return <div className="p-20 text-center text-slate-500">Connecting to Kitchen...</div>
+  if (loading) return <div className="p-20 text-center text-slate-500">Connecting to Kitchen Display System...</div>
 
   return (
     <div className="min-h-screen bg-slate-950 text-white p-6 pt-24">
@@ -57,7 +67,7 @@ export default function KitchenPage() {
         <div className="flex justify-between items-center mb-10 bg-slate-900 p-6 rounded-3xl border border-white/10">
           <div>
             <h1 className="text-3xl font-black italic tracking-tighter text-orange-500 uppercase">Kitchen Display System</h1>
-            <p className="text-slate-400 text-sm">Real-time order tickets</p>
+            <p className="text-slate-400 text-sm">Live Incoming Orders</p>
           </div>
           <Badge className="bg-orange-600 text-white px-6 py-3 text-xl rounded-2xl animate-pulse">
             {orders.length} ACTIVE TICKETS
@@ -69,7 +79,7 @@ export default function KitchenPage() {
             <Card key={order.id} className="bg-slate-900 border-2 border-slate-800 rounded-[2.5rem] overflow-hidden shadow-2xl">
               <div className="bg-slate-800 p-5 flex justify-between items-center border-b border-white/5">
                 <span className="font-black text-2xl">TABLE {order.table_id}</span>
-                <Button size="sm" variant="ghost" onClick={printTicket} className="text-slate-400">
+                <Button size="sm" variant="ghost" onClick={printTicket} className="text-slate-400 hover:text-white">
                   <Printer className="w-5 h-5 mr-2" /> PRINT
                 </Button>
               </div>
@@ -86,11 +96,11 @@ export default function KitchenPage() {
 
                 <div className="flex flex-col gap-3">
                   {order.status === 'pending' ? (
-                    <Button onClick={() => updateStatus(order.id, 'cooking')} className="w-full bg-yellow-600 py-8 text-xl font-black rounded-2xl">
+                    <Button onClick={() => updateStatus(order.id, 'cooking')} className="w-full bg-yellow-600 py-8 text-xl font-black rounded-2xl hover:bg-yellow-700">
                       START COOKING
                     </Button>
                   ) : (
-                    <Button onClick={() => updateStatus(order.id, 'served')} className="w-full bg-green-600 py-8 text-xl font-black rounded-2xl">
+                    <Button onClick={() => updateStatus(order.id, 'served')} className="w-full bg-green-600 py-8 text-xl font-black rounded-2xl hover:bg-green-700">
                       MARK SERVED
                     </Button>
                   )}
@@ -104,9 +114,9 @@ export default function KitchenPage() {
         </div>
         
         {orders.length === 0 && (
-            <div className="text-center py-20 opacity-50">
-                <Utensils className="w-20 h-20 mx-auto mb-4 text-slate-700" />
-                <h2 className="text-2xl font-bold text-slate-700">Kitchen is Clear</h2>
+            <div className="text-center py-20 opacity-30">
+                <Utensils className="w-20 h-20 mx-auto mb-4" />
+                <h2 className="text-2xl font-bold">All Orders Cleared</h2>
             </div>
         )}
       </div>

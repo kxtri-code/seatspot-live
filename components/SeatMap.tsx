@@ -3,30 +3,18 @@
 import { useEffect, useRef, useState } from 'react'
 import * as fabric from 'fabric' 
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog"
 import { supabase } from '@/lib/supabaseClient'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 
 export default function SeatMap() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [selectedSeat, setSelectedSeat] = useState<any>(null)
+  const [isModalOpen, setIsModalOpen] = useState(false)
   const canvasInstance = useRef<fabric.Canvas | null>(null)
-  
-  // State for the Popup
-  const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [selectedTable, setSelectedTable] = useState<any>(null)
-  const [guestName, setGuestName] = useState("")
 
   useEffect(() => {
     if (!canvasRef.current) return
 
-    // 1. Initialize Canvas
     const canvas = new fabric.Canvas(canvasRef.current, {
       height: 400,
       width: 600,
@@ -35,86 +23,81 @@ export default function SeatMap() {
     })
     canvasInstance.current = canvas
 
-    // 2. Function to Draw Tables
-    const addTableToMap = (t: any) => {
-      const existing = canvas.getObjects().find((obj: any) => obj.data?.id === t.id)
+    // Load Background Image (Optional: ensure layout.jpg is in /public)
+    const bgImage = document.createElement('img')
+    bgImage.src = '/layout.jpg'
+    bgImage.onload = () => {
+        const imgInstance = new fabric.Image(bgImage, { opacity: 0.3 })
+        imgInstance.scaleToWidth(600)
+        canvas.backgroundImage = imgInstance
+        canvas.requestRenderAll()
+    }
+
+    const addSeatToMap = (s: any) => {
+      const existing = canvas.getObjects().find((obj: any) => obj.data?.id === s.id)
       if (existing) {
-         // If it exists, just update the color
          const circle = (existing as any).getObjects()[0]
-         circle.set('fill', t.status === 'free' ? '#22c55e' : '#ef4444')
+         circle.set('fill', s.status === 'free' ? '#22c55e' : '#ef4444')
          canvas.requestRenderAll()
          return
       }
 
-      // Draw new table
       const circle = new fabric.Circle({
-        radius: 30,
-        fill: t.status === 'free' ? '#22c55e' : '#ef4444',
-        stroke: '#15803d',
-        strokeWidth: 2,
+        radius: 25,
+        fill: s.status === 'free' ? '#22c55e' : '#ef4444',
         originX: 'center',
         originY: 'center',
       })
 
-      const text = new fabric.Text(t.label, {
-        fontSize: 14,
-        fill: '#ffffff',
-        fontFamily: 'Arial',
+      const text = new fabric.Text(s.label, {
+        fontSize: 12,
+        fill: '#fff',
         originX: 'center',
         originY: 'center',
       })
 
       const group = new fabric.Group([circle, text], {
-        left: t.x,
-        top: t.y,
+        left: s.x,
+        top: s.y,
         hasControls: false,
-        hoverCursor: 'pointer',
+        lockMovementX: true,
+        lockMovementY: true,
+        hoverCursor: s.status === 'free' ? 'pointer' : 'not-allowed',
       })
+
       // @ts-ignore
-      group.data = { id: t.id, label: t.label } 
+      group.data = { id: s.id, label: s.label, status: s.status }
       canvas.add(group)
     }
 
-    // 3. Load Tables from DB
-    const fetchTables = async () => {
+    const fetchSeats = async () => {
       const { data } = await supabase.from('seats').select('*')
-      if (data) data.forEach((t) => addTableToMap(t))
+      if (data) data.forEach((s) => addSeatToMap(s))
     }
-    fetchTables()
+    fetchSeats()
 
-    // 4. Realtime Listener
     const channel = supabase
-      .channel('room1')
+      .channel('seat_updates')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'seats' }, (payload) => {
-        const updatedTable = payload.new as any
+        const updated = payload.new as any
         const objects = canvas.getObjects() as any[]
-        const group = objects.find((obj) => obj.data?.id === updatedTable.id)
-        
+        const group = objects.find((obj) => obj.data?.id === updated.id)
         if (group) {
           const circle = group.getObjects()[0]
-          circle.set('fill', updatedTable.status === 'free' ? '#22c55e' : '#ef4444')
+          circle.set('fill', updated.status === 'free' ? '#22c55e' : '#ef4444')
+          group.hoverCursor = updated.status === 'free' ? 'pointer' : 'not-allowed'
           canvas.requestRenderAll()
         }
       })
       .subscribe()
 
-    // 5. Handle Click -> Open Popup (Instead of auto-booking)
     canvas.on('mouse:down', (options) => {
       if (options.target && options.target.type === 'group') {
         const group = options.target as any
-        const tableId = group.data.id
-        const label = group.data.label
-        
-        // Only allow booking if it's FREE
-        const circle = group.getObjects()[0]
-        if (circle.fill === '#ef4444') {
-          alert("This table is already taken!")
-          return
+        if (group.data.status === 'free') {
+          setSelectedSeat(group.data)
+          setIsModalOpen(true)
         }
-
-        // Open the "Booking Form"
-        setSelectedTable({ id: tableId, label: label })
-        setIsDialogOpen(true)
       }
     })
 
@@ -124,58 +107,59 @@ export default function SeatMap() {
     }
   }, [])
 
-  // 6. The Function that runs when you click "Confirm Booking"
-  const handleBooking = async () => {
-    if (!selectedTable || !guestName) return
+  // --- UPDATED BOOKING LOGIC ---
+  const confirmBooking = async () => {
+    if (!selectedSeat) return
 
-    // Send to Supabase
-    await supabase
+    // 1. Check if user is logged in
+    const { data: { session } } = await supabase.auth.getSession()
+
+    if (!session) {
+      alert("Please login to book this table!")
+      window.location.href = "/login"
+      return
+    }
+
+    // 2. Use session email for guest_name automatically
+    const { error } = await supabase
       .from('seats')
-      .update({ status: 'occupied', guest_name: guestName })
-      .eq('id', selectedTable.id)
+      .update({ 
+        status: 'occupied', 
+        guest_name: session.user.email 
+      })
+      .eq('id', selectedSeat.id)
 
-    // Close Popup and Reset
-    setIsDialogOpen(false)
-    setGuestName("")
+    if (error) {
+      alert("Error booking seat: " + error.message)
+    } else {
+      setIsModalOpen(false)
+      setSelectedSeat(null)
+    }
   }
 
   return (
-    <div className="flex flex-col items-center gap-4 bg-white p-6 rounded-xl shadow-lg">
-      <h2 className="text-xl font-bold">Live Booking System</h2>
-      
-      {/* Map */}
-      <div className="border-4 border-gray-200 rounded-lg overflow-hidden">
+    <div className="flex flex-col items-center p-4 bg-white rounded-xl shadow-2xl">
+      <div className="mb-4 flex gap-4 text-sm font-bold">
+        <div className="flex items-center gap-2"><div className="w-4 h-4 bg-green-500 rounded-full"></div> Available</div>
+        <div className="flex items-center gap-2"><div className="w-4 h-4 bg-red-500 rounded-full"></div> Booked</div>
+      </div>
+
+      <div className="border-2 border-slate-200 rounded-lg overflow-hidden">
         <canvas ref={canvasRef} />
       </div>
 
-      <p className="text-gray-500 text-sm">Tap a green table to book it.</p>
-
-      {/* THE POPUP FORM */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent>
+      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+        <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>Book {selectedTable?.label}</DialogTitle>
+            <DialogTitle>Confirm Reservation</DialogTitle>
           </DialogHeader>
-          
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="name" className="text-right">
-                Name
-              </Label>
-              <Input
-                id="name"
-                value={guestName}
-                onChange={(e) => setGuestName(e.target.value)}
-                className="col-span-3"
-                placeholder="Enter your name..."
-              />
-            </div>
+          <div className="py-4 text-center">
+            <p className="text-lg">Do you want to book <span className="font-bold">Table {selectedSeat?.label}</span>?</p>
+            <p className="text-sm text-slate-500 mt-2">This will be linked to your account.</p>
           </div>
-
           <DialogFooter>
-            <Button onClick={handleBooking} className="bg-black text-white">
-              Confirm Reservation
-            </Button>
+            <Button variant="outline" onClick={() => setIsModalOpen(false)}>Cancel</Button>
+            <Button onClick={confirmBooking} className="bg-blue-600 text-white">Confirm Booking</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

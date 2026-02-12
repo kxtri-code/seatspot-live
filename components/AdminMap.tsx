@@ -4,26 +4,45 @@ import { useEffect, useRef, useState } from 'react'
 import * as fabric from 'fabric' 
 import { Button } from '@/components/ui/button'
 import { supabase } from '@/lib/supabaseClient'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import QRCode from "react-qr-code"
 
 export default function AdminMap() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [selectedTable, setSelectedTable] = useState<any>(null)
+  const [showQR, setShowQR] = useState(false) // Controls the popup
   const canvasInstance = useRef<fabric.Canvas | null>(null)
 
+  // Determine the Base URL (localhost or live)
+  const [baseUrl, setBaseUrl] = useState("")
+
   useEffect(() => {
+    // Set the URL only once the browser loads
+    setBaseUrl(window.location.origin)
+    
     if (!canvasRef.current) return
 
     const canvas = new fabric.Canvas(canvasRef.current, {
       height: 400,
       width: 600,
-      backgroundColor: '#e2e8f0', // Darker gray for Admin Mode
+      backgroundColor: '#e2e8f0',
       selection: false,
     })
     canvasInstance.current = canvas
 
-    // Function to Draw Tables
+    // Load Background Image
+    const bgImage = document.createElement('img')
+    bgImage.src = '/layout.jpg'
+    bgImage.onload = () => {
+        const imgInstance = new fabric.Image(bgImage, {
+            opacity: 0.5,
+        })
+        imgInstance.scaleToWidth(600)
+        canvas.backgroundImage = imgInstance
+        canvas.requestRenderAll()
+    }
+
     const addTableToMap = (t: any) => {
-      // Avoid duplicates
       const existing = canvas.getObjects().find((obj: any) => obj.data?.id === t.id)
       if (existing) {
          const circle = (existing as any).getObjects()[0]
@@ -35,7 +54,7 @@ export default function AdminMap() {
       const circle = new fabric.Circle({
         radius: 30,
         fill: t.status === 'free' ? '#22c55e' : '#ef4444',
-        stroke: '#000000', // Black border for Admin
+        stroke: '#000000',
         strokeWidth: 3,
         originX: 'center',
         originY: 'center',
@@ -60,14 +79,12 @@ export default function AdminMap() {
       canvas.add(group)
     }
 
-    // Load Data
     const fetchTables = async () => {
       const { data } = await supabase.from('seats').select('*')
       if (data) data.forEach((t) => addTableToMap(t))
     }
     fetchTables()
 
-    // Realtime Listener
     const channel = supabase
       .channel('admin_room')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'seats' }, (payload) => {
@@ -78,21 +95,19 @@ export default function AdminMap() {
         if (group) {
           const circle = group.getObjects()[0]
           circle.set('fill', updatedTable.status === 'free' ? '#22c55e' : '#ef4444')
-          // Update guest name data
           group.data.guest = updatedTable.guest_name
           canvas.requestRenderAll()
         }
       })
       .subscribe()
 
-    // Handle Admin Clicks
     canvas.on('mouse:down', (options) => {
       if (options.target && options.target.type === 'group') {
         const group = options.target as any
         setSelectedTable({
             id: group.data.id, 
             label: group.data.label,
-            guest: group.data.guest // We can see who sat there!
+            guest: group.data.guest 
         })
       }
     })
@@ -103,42 +118,120 @@ export default function AdminMap() {
     }
   }, [])
 
-  // ADMIN ACTION: Clear the table
   const clearTable = async () => {
     if (!selectedTable) return
-    
-    await supabase
-      .from('seats')
-      .update({ status: 'free', guest_name: null }) // Wipe the data
-      .eq('id', selectedTable.id)
-      
+    await supabase.from('seats').update({ status: 'free', guest_name: null }).eq('id', selectedTable.id)
     setSelectedTable(null)
   }
 
+  // Helper to print the QR Code
+  const printQR = () => {
+    const printWindow = window.open('', '', 'width=600,height=600')
+    if (!printWindow) return
+
+    // We get the SVG of the QR code
+    const svg = document.getElementById("qr-code-svg")?.outerHTML
+
+    printWindow.document.write(`
+      <html>
+        <head>
+            <title>QR for ${selectedTable?.label}</title>
+            <style>
+                body { font-family: sans-serif; text-align: center; padding-top: 50px; }
+                h1 { font-size: 40px; margin-bottom: 10px; }
+                p { font-size: 20px; color: #666; }
+            </style>
+        </head>
+        <body>
+          <h1>${selectedTable?.label}</h1>
+          <p>Scan to Order</p>
+          <br/>
+          ${svg}
+          <br/><br/>
+          <p>seatspot.com</p>
+        </body>
+      </html>
+    `)
+    printWindow.document.close()
+    printWindow.focus()
+    printWindow.print()
+    printWindow.close()
+  }
+
   return (
-    <div className="flex flex-col items-center gap-4 bg-white p-6 rounded-xl shadow-lg border-2 border-black">
-      <h2 className="text-xl font-bold text-red-600">MANAGER DASHBOARD</h2>
+    <div className="flex flex-col items-center gap-4 bg-white p-6 rounded-xl shadow-lg border-2 border-black w-full max-w-4xl">
+      <div className="flex justify-between w-full items-center">
+         <h2 className="text-xl font-bold text-red-600">MANAGER DASHBOARD</h2>
+         <div className="text-sm text-gray-500">Click a table to manage it</div>
+      </div>
       
-      <div className="border-4 border-black rounded-lg overflow-hidden">
-        <canvas ref={canvasRef} />
+      <div className="flex flex-col md:flex-row gap-6 w-full">
+        {/* The Map */}
+        <div className="border-4 border-black rounded-lg overflow-hidden flex-1">
+            <canvas ref={canvasRef} />
+        </div>
+
+        {/* The Control Panel */}
+        <div className="w-full md:w-1/3 p-4 bg-gray-100 rounded-lg flex flex-col gap-4">
+            {selectedTable ? (
+                <>
+                    <div className="text-center pb-4 border-b border-gray-300">
+                        <p className="text-gray-500 text-sm uppercase">Selected</p>
+                        <h3 className="text-3xl font-bold">{selectedTable.label}</h3>
+                        {selectedTable.guest ? (
+                            <p className="text-blue-600 font-bold mt-2">Occupied by: {selectedTable.guest}</p>
+                        ) : (
+                            <p className="text-green-600 font-bold mt-2">Available</p>
+                        )}
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                        {selectedTable.guest && (
+                             <Button onClick={clearTable} className="bg-red-600 hover:bg-red-700 text-white py-6 text-lg">
+                                CLEAR TABLE
+                             </Button>
+                        )}
+                        
+                        <Button onClick={() => setShowQR(true)} variant="outline" className="py-6 text-lg border-black">
+                            Show QR Code
+                        </Button>
+                    </div>
+                </>
+            ) : (
+                <div className="h-full flex items-center justify-center text-gray-400 italic">
+                    Select a table on the map...
+                </div>
+            )}
+        </div>
       </div>
 
-      <div className="p-4 bg-gray-100 w-full rounded text-center">
-        <p className="text-gray-500 text-sm">Selected Table:</p>
-        <h3 className="text-2xl font-bold mb-2">{selectedTable?.label || "None"}</h3>
-        
-        {selectedTable?.guest && (
-            <p className="text-blue-600 font-bold mb-4">Guest: {selectedTable.guest}</p>
-        )}
+      {/* THE QR POPUP */}
+      <Dialog open={showQR} onOpenChange={setShowQR}>
+        <DialogContent className="sm:max-w-md text-center">
+            <DialogHeader>
+                <DialogTitle>QR Code for {selectedTable?.label}</DialogTitle>
+            </DialogHeader>
+            
+            <div className="flex flex-col items-center justify-center p-6 bg-white">
+                {selectedTable && baseUrl && (
+                    <div className="p-4 border-4 border-black rounded-xl">
+                        <QRCode 
+                            id="qr-code-svg"
+                            value={`${baseUrl}/menu/${selectedTable.id}`} 
+                            size={200}
+                        />
+                    </div>
+                )}
+                <p className="mt-4 text-sm text-gray-500">
+                    Directs to: {baseUrl}/menu/{selectedTable?.id}
+                </p>
+            </div>
 
-        <Button 
-            onClick={clearTable} 
-            className="w-full bg-red-600 hover:bg-red-700 text-white"
-            disabled={!selectedTable}
-        >
-          CLEAR TABLE (Mark Free)
-        </Button>
-      </div>
+            <Button onClick={printQR} className="w-full bg-black text-white">
+                PRINT QR CODE
+            </Button>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -46,8 +46,8 @@ export default function Home() {
     { name: 'All', icon: Globe },
     { name: 'Rooftop', icon: Sun },
     { name: 'Club', icon: Moon },
-    { name: 'Live Music', icon: Music },
-    { name: 'Cafe', icon: Coffee },
+    { name: 'Live Music', icon: Music }, // Make sure this matches the DB
+    { name: 'Cafe', icon: Coffee },      // Make sure this matches the DB
   ]
 
   return (

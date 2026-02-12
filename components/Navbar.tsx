@@ -18,40 +18,42 @@ export default function Navbar() {
       setUser(session?.user || null)
     }
     getUser()
-
-    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-      setUser(session?.user || null)
-    })
-
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => setUser(session?.user || null))
     return () => authListener.subscription.unsubscribe()
   }, [])
 
-  // The "Operating System" Links
-  const navLinks = [
+  // CHECK: Is this user an Admin? (Simple check for MVP)
+  const isAdmin = user?.email === 'admin@seatspot.com' || user?.email === 'manager@seatspot.com'
+
+  // Standard Guest Links
+  const guestLinks = [
     { name: 'Discover', href: '/', icon: Ticket },
     { name: 'My Tickets', href: '/profile', icon: User },
-    // Management Links
-    { name: 'Manager', href: '/dashboard', icon: LayoutDashboard },
+  ]
+
+  // Admin Only Links
+  const adminLinks = [
+    { name: 'Manager DB', href: '/dashboard', icon: LayoutDashboard },
     { name: 'Kitchen', href: '/admin/kitchen', icon: ChefHat },
     { name: 'Digitizer', href: '/admin/layout-editor', icon: Map },
     { name: 'Super Admin', href: '/super-admin', icon: ShieldCheck },
   ]
 
+  const activeLinks = isAdmin ? [...guestLinks, ...adminLinks] : guestLinks
+
   return (
     <nav className="fixed top-0 left-0 right-0 z-[5000] bg-slate-900/90 backdrop-blur-md border-b border-white/10 text-white">
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-        
-        {/* Logo */}
         <Link href="/" className="flex items-center gap-2 group">
           <div className="bg-blue-600 p-1.5 rounded-lg group-hover:bg-blue-500 transition-colors">
             <Ticket className="w-5 h-5 text-white" />
           </div>
-          <span className="font-black text-xl tracking-tighter">SEATSPOT <span className="text-blue-500">OS</span></span>
+          <span className="font-black text-xl tracking-tighter">SEATSPOT</span>
         </Link>
 
         {/* Desktop Links */}
         <div className="hidden lg:flex items-center gap-6">
-          {navLinks.map((link) => (
+          {activeLinks.map((link) => (
             <Link 
               key={link.href} 
               href={link.href}
@@ -75,7 +77,6 @@ export default function Navbar() {
               <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center text-[10px] font-black">
                 {user.email[0].toUpperCase()}
               </div>
-              <span className="text-xs font-bold text-slate-300 hidden xl:block">{user.email}</span>
             </div>
           )}
         </div>
@@ -88,8 +89,8 @@ export default function Navbar() {
 
       {/* Mobile Menu */}
       {isOpen && (
-        <div className="lg:hidden bg-slate-950 border-b border-white/10 p-6 flex flex-col gap-4 animate-in slide-in-from-top duration-300 absolute w-full h-screen">
-          {navLinks.map((link) => (
+        <div className="lg:hidden bg-slate-950 border-b border-white/10 p-6 flex flex-col gap-4 absolute w-full h-screen top-16 left-0">
+          {activeLinks.map((link) => (
             <Link 
               key={link.href} 
               href={link.href} 
@@ -102,11 +103,6 @@ export default function Navbar() {
               {link.name}
             </Link>
           ))}
-          {!user && (
-             <Link href="/login" onClick={() => setIsOpen(false)}>
-                <Button className="w-full bg-blue-600 py-6 text-lg font-bold rounded-2xl">Login Account</Button>
-             </Link>
-          )}
         </div>
       )}
     </nav>

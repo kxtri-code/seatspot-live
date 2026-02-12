@@ -1,142 +1,107 @@
 "use client"
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
-import SeatMap from "@/components/SeatMap"
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Calendar, MapPin, Ticket, Globe, List } from 'lucide-react'
-import dynamic from 'next/dynamic'
+import { Users, Layout, Clock, UserCheck, Search, Filter } from 'lucide-react'
+import AdminMap from '@/components/AdminMap'
 
-// Dynamically import the Map so it doesn't crash on server
-const CityMap = dynamic(() => import('@/components/CityMap'), { 
-    ssr: false,
-    loading: () => <div className="h-[500px] w-full bg-slate-100 animate-pulse rounded-xl flex items-center justify-center">Loading Map...</div>
-})
-
-type Event = {
-  id: string
-  title: string
-  description: string
-  date: string
-  image_url: string
-  venue_name: string
-  price_per_seat: number
-  lat: number
-  lng: number
-  vibe_score: number
-}
-
-export default function Home() {
-  const [events, setEvents] = useState<Event[]>([])
-  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null)
-  const [viewMode, setViewMode] = useState<'list' | 'map'>('list') // TOGGLE STATE
-  const mapSectionRef = useRef<HTMLDivElement>(null)
+export default function AdminDashboard() {
+  const [activeTables, setActiveTables] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const fetchEvents = async () => {
-      const { data } = await supabase.from('events').select('*').order('date', { ascending: true })
-      if (data) setEvents(data)
+    const fetchLiveStatus = async () => {
+      // Real-time "God View" of all seats
+      const { data } = await supabase.from('seats').select('*')
+      if (data) setActiveTables(data)
+      setLoading(false)
     }
-    fetchEvents()
+    fetchLiveStatus()
+
+    // Real-time synchronization [cite: 70]
+    const channel = supabase.channel('floor_updates').on('postgres_changes', 
+      { event: 'UPDATE', schema: 'public', table: 'seats' }, () => {
+        fetchLiveStatus()
+    }).subscribe()
+
+    return () => { supabase.removeChannel(channel) }
   }, [])
 
-  const handleBookNow = (event: Event) => {
-    setSelectedEvent(event)
-    setTimeout(() => {
-        mapSectionRef.current?.scrollIntoView({ behavior: 'smooth' })
-    }, 100)
-  }
-
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-900 font-sans">
-      
-      {/* HERO */}
-      <div className="relative bg-slate-900 text-white py-20 px-6 text-center overflow-hidden">
-        <div className="absolute inset-0 opacity-20 bg-[url('https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=1600&q=80')] bg-cover bg-center" />
-        <div className="relative z-10 max-w-3xl mx-auto">
-            <h1 className="text-5xl font-extrabold tracking-tight mb-4">
-              Discover the <span className="text-blue-500">Vibe</span>.
-            </h1>
-            <p className="text-xl text-slate-300 mb-8">
-              Find the hottest events in the city. Live.
-            </p>
-        </div>
-      </div>
-
-      {/* VIEW TOGGLE & CONTENT */}
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        <div className="flex justify-between items-center mb-8">
-            <h2 className="text-3xl font-bold flex items-center gap-2">
-                {viewMode === 'list' ? <Ticket className="text-blue-600"/> : <Globe className="text-blue-600"/>}
-                {viewMode === 'list' ? 'Trending Events' : 'City Vibe Map'}
-            </h2>
-            
-            {/* THE TOGGLE BUTTONS */}
-            <div className="bg-white border rounded-lg p-1 flex gap-1 shadow-sm">
-                <Button 
-                    variant={viewMode === 'list' ? 'default' : 'ghost'} 
-                    onClick={() => setViewMode('list')}
-                    size="sm"
-                >
-                    <List className="w-4 h-4 mr-2" /> List
-                </Button>
-                <Button 
-                    variant={viewMode === 'map' ? 'default' : 'ghost'} 
-                    onClick={() => setViewMode('map')}
-                    size="sm"
-                >
-                    <Globe className="w-4 h-4 mr-2" /> Map
-                </Button>
+    <div className="min-h-screen bg-slate-900 text-white p-6 pt-24">
+      <div className="max-w-[1600px] mx-auto grid grid-cols-1 xl:grid-cols-4 gap-8">
+        
+        {/* PANEL A: COMMAND CENTER CONTROLS [cite: 32] */}
+        <div className="xl:col-span-3 space-y-6">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-800 p-6 rounded-3xl border border-white/10 shadow-2xl">
+            <div>
+              <h1 className="text-3xl font-black tracking-tighter uppercase">Mission Control</h1>
+              <p className="text-slate-400 text-sm">Live Floor Plan & Seating Management [cite: 34]</p>
             </div>
+            <div className="flex gap-3">
+              <Button className="bg-green-600 hover:bg-green-700 text-white font-bold px-6 py-6 rounded-2xl transition-all">
+                <Users className="w-5 h-5 mr-2" /> New Walk-in [cite: 36]
+              </Button>
+              <Button variant="outline" className="border-white/20 bg-white/5 hover:bg-white/10 text-white py-6 rounded-2xl">
+                <Filter className="w-5 h-5" /> Filter
+              </Button>
+            </div>
+          </div>
+
+          {/* VISUAL MAP: The "Secret Sauce" [cite: 22] */}
+          <div className="bg-slate-800 rounded-[2.5rem] border border-white/10 p-8 shadow-inner overflow-hidden flex justify-center min-h-[600px]">
+             <AdminMap />
+          </div>
         </div>
 
-        {/* LIST VIEW */}
-        {viewMode === 'list' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                {events.map((event) => (
-                    <div key={event.id} className="group bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all border border-slate-100 overflow-hidden flex flex-col">
-                        <div className="h-48 overflow-hidden relative">
-                            <img src={event.image_url} alt={event.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                            {event.vibe_score > 80 && (
-                                <div className="absolute top-4 left-4 bg-red-600 text-white px-2 py-1 rounded text-xs font-bold flex items-center gap-1">
-                                    🔥 HOT VIBE
-                                </div>
-                            )}
-                        </div>
-                        <div className="p-6 flex flex-col flex-1">
-                            <h3 className="text-xl font-bold mb-2">{event.title}</h3>
-                            <p className="text-slate-500 text-sm mb-4 line-clamp-2">{event.description}</p>
-                            <Button onClick={() => handleBookNow(event)} className="w-full mt-auto bg-slate-900 text-white">Book Now</Button>
-                        </div>
+        {/* PANEL B: CRM & RECENT ACTIVITY (The "Digital Notebook") [cite: 39, 41] */}
+        <div className="xl:col-span-1 space-y-6">
+          <Card className="bg-slate-800 border-white/10 rounded-[2rem] overflow-hidden">
+            <div className="p-6 border-b border-white/10">
+              <h3 className="text-xl font-bold flex items-center gap-2">
+                <UserCheck className="text-blue-500 w-5 h-5" /> VIP CRM Alert [cite: 44]
+              </h3>
+            </div>
+            <CardContent className="p-6 space-y-6">
+              {/* This mimics the "Customer Memory" scenario in your report [cite: 39] */}
+              <div className="p-4 bg-blue-600/20 border border-blue-500/30 rounded-2xl">
+                <div className="flex justify-between items-start mb-2">
+                  <h4 className="font-bold text-blue-100">Rahul (VIP) [cite: 42, 44]</h4>
+                  <Badge className="bg-blue-500 text-white text-[10px]">RECURRING</Badge>
+                </div>
+                <p className="text-xs text-blue-200">Prefers: Window Seats [cite: 46]</p>
+                <p className="text-[10px] text-blue-300 mt-1 italic">Last ordered: Spicy Pasta & Mojito [cite: 47]</p>
+              </div>
+
+              <div className="space-y-4 pt-4 border-t border-white/10">
+                <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest">Active Tables [cite: 34]</h4>
+                {activeTables.filter(t => t.status === 'occupied').map(table => (
+                  <div key={table.id} className="flex items-center justify-between group">
+                    <div>
+                      <p className="font-bold text-sm">Table {table.label}</p>
+                      <p className="text-[10px] text-slate-400 flex items-center gap-1">
+                        <Clock className="w-3 h-3 text-orange-400" /> 45 mins seated [cite: 38]
+                      </p>
                     </div>
+                    <Button size="sm" variant="ghost" className="text-red-400 hover:text-red-300 hover:bg-red-400/10">
+                      Checkout
+                    </Button>
+                  </div>
                 ))}
-            </div>
-        )}
+              </div>
+            </CardContent>
+          </Card>
 
-        {/* MAP VIEW */}
-        {viewMode === 'map' && (
-            <CityMap events={events} onBook={handleBookNow} />
-        )}
-      </div>
+          <div className="bg-gradient-to-br from-indigo-600 to-purple-700 p-6 rounded-[2rem] text-white shadow-xl">
+             <h4 className="font-bold mb-2">Manager Tip</h4>
+             <p className="text-xs text-white/70">Tables turn yellow after 90 minutes. Check Table 12 for turnover[cite: 38, 76].</p>
+          </div>
+        </div>
 
-      {/* BOOKING SECTION */}
-      <div ref={mapSectionRef} className="bg-slate-900 py-16 text-white min-h-screen flex flex-col items-center justify-center">
-        {selectedEvent ? (
-            <div className="w-full max-w-6xl px-6 flex flex-col items-center gap-8">
-                <div className="text-center">
-                    <Badge className="mb-4 bg-blue-600 text-white border-none px-4 py-1 text-sm">BOOKING</Badge>
-                    <h2 className="text-4xl font-bold mb-2">{selectedEvent.title}</h2>
-                    <p className="text-slate-400">Select your table below.</p>
-                </div>
-                <div className="bg-white p-2 rounded-xl w-fit text-black">
-                    <SeatMap />
-                </div>
-            </div>
-        ) : (
-            <div className="text-center text-slate-500"><p>Select an event to view seating.</p></div>
-        )}
       </div>
-    </main>
-  );
+    </div>
+  )
 }

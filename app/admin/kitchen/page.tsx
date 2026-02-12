@@ -2,58 +2,41 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Printer } from 'lucide-react' // Import Printer Icon
-
-type OrderItem = {
-  id: string
-  menu_item_id: string
-  quantity: number
-  item_name: string
-}
-
-type Order = {
-  id: string
-  table_id: string
-  status: string
-  total_amount: number
-  created_at: string
-  items?: OrderItem[]
-}
+import { Utensils, Printer, Clock, CheckCircle } from 'lucide-react'
 
 export default function KitchenPage() {
-  const [orders, setOrders] = useState<Order[]>([])
+  const [orders, setOrders] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
 
-  // Fetch Orders
-  const fetchOrders = async () => {
-    const { data: ordersData } = await supabase
-      .from('orders')
-      .select('*')
-      .neq('status', 'served')
-      .order('created_at', { ascending: true })
-
-    if (ordersData) {
-      const ordersWithItems = await Promise.all(
-        ordersData.map(async (order) => {
-          const { data: items } = await supabase
-            .from('order_items')
-            .select('*')
-            .eq('order_id', order.id)
-          return { ...order, items: items || [] }
-        })
-      )
-      setOrders(ordersWithItems)
-    }
-  }
-
-  // Realtime Listener
   useEffect(() => {
+    const fetchOrders = async () => {
+      // Get orders that haven't been served yet
+      const { data } = await supabase
+        .from('orders')
+        .select('*')
+        .neq('status', 'served')
+        .order('created_at', { ascending: true })
+      
+      if (data) setOrders(data)
+      setLoading(false)
+    }
+
     fetchOrders()
+
+    // Real-time listener: Triggers the "Beep" for new orders [cite: 57, 58]
     const channel = supabase
-      .channel('kitchen_orders')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => fetchOrders())
+      .channel('kitchen_sync')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, (payload) => {
+        setOrders(prev => [...prev, payload.new])
+        const audio = new Audio('/beep.mp3')
+        audio.play().catch(() => console.log("Audio alert ready"))
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, () => {
+        fetchOrders()
+      })
       .subscribe()
 
     return () => { supabase.removeChannel(channel) }
@@ -63,115 +46,62 @@ export default function KitchenPage() {
     await supabase.from('orders').update({ status: newStatus }).eq('id', orderId)
   }
 
-  // THE PRINT FUNCTION
-  const printTicket = (order: Order) => {
-    // 1. Create a temporary hidden iframe or div to hold the receipt
-    const printWindow = window.open('', '', 'width=600,height=600')
-    if (!printWindow) return
+  // Mimics the "Thermal Printer" tech signal [cite: 63, 64]
+  const printTicket = () => window.print()
 
-    // 2. Generate the HTML for the Receipt
-    const itemsHtml = order.items?.map(item => `
-      <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-        <span>${item.quantity}x ${item.item_name}</span>
-      </div>
-    `).join('')
-
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Order #${order.id.slice(0, 4)}</title>
-          <style>
-            body { font-family: 'Courier New', monospace; padding: 20px; width: 300px; }
-            h2, h3 { text-align: center; margin: 5px 0; }
-            .divider { border-top: 1px dashed black; margin: 10px 0; }
-            .total { font-weight: bold; font-size: 18px; text-align: right; margin-top: 10px; }
-          </style>
-        </head>
-        <body>
-          <h2>SEATSPOT</h2>
-          <h3>Table ${order.table_id}</h3>
-          <p>Time: ${new Date(order.created_at).toLocaleTimeString()}</p>
-          <div class="divider"></div>
-          ${itemsHtml}
-          <div class="divider"></div>
-          <div class="total">TOTAL: $${order.total_amount}</div>
-          <br/>
-          <center>*** KITCHEN COPY ***</center>
-        </body>
-      </html>
-    `)
-
-    // 3. Trigger Print
-    printWindow.document.close()
-    printWindow.focus()
-    printWindow.print()
-    printWindow.close()
-  }
+  if (loading) return <div className="p-20 text-center text-slate-500">Connecting to Kitchen...</div>
 
   return (
-    <div className="min-h-screen bg-slate-900 p-8 text-white">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-4xl font-bold tracking-tight">KITCHEN DISPLAY (KDS)</h1>
-        <div className="text-xl font-mono text-green-400">
-          LIVE • {orders.length} Active Tickets
+    <div className="min-h-screen bg-slate-950 text-white p-6 pt-24">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex justify-between items-center mb-10 bg-slate-900 p-6 rounded-3xl border border-white/10">
+          <div>
+            <h1 className="text-3xl font-black italic tracking-tighter text-orange-500 uppercase">Kitchen Display System</h1>
+            <p className="text-slate-400 text-sm">Real-time order tickets for venue operations [cite: 31, 50]</p>
+          </div>
+          <Badge className="bg-orange-600 text-white px-6 py-3 text-xl rounded-2xl animate-pulse">
+            {orders.length} ACTIVE TICKETS
+          </Badge>
         </div>
-      </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-        {orders.map((order) => (
-          <Card key={order.id} className={`border-l-8 ${order.status === 'pending' ? 'border-l-red-500' : 'border-l-yellow-500'} bg-slate-800 text-slate-100 shadow-xl`}>
-            <CardHeader className="pb-2">
-              <div className="flex justify-between items-start">
-                <CardTitle className="text-3xl font-bold">Table {order.table_id}</CardTitle>
-                <Badge className={order.status === 'pending' ? "bg-red-500" : "bg-yellow-500"}>
-                  {order.status.toUpperCase()}
-                </Badge>
-              </div>
-              <p className="text-xs text-slate-400 font-mono">
-                #{order.id.slice(0, 4)} • {new Date(order.created_at).toLocaleTimeString()}
-              </p>
-            </CardHeader>
-            
-            <CardContent>
-              <div className="space-y-3 my-4">
-                {order.items?.map((item) => (
-                  <div key={item.id} className="flex justify-between text-lg border-b border-slate-700 pb-1">
-                    <span className="font-bold">{item.quantity}x {item.item_name}</span>
-                  </div>
-                ))}
-              </div>
-
-              <div className="grid gap-2 mt-6">
-                {/* PRINT BUTTON */}
-                <Button 
-                  onClick={() => printTicket(order)}
-                  variant="outline"
-                  className="w-full bg-slate-700 hover:bg-slate-600 text-white border-slate-600"
-                >
-                  <Printer className="w-4 h-4 mr-2" /> PRINT TICKET
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          {orders.map((order) => (
+            <Card key={order.id} className="bg-slate-900 border-2 border-slate-800 rounded-[2.5rem] overflow-hidden shadow-2xl">
+              <div className="bg-slate-800 p-5 flex justify-between items-center border-b border-white/5">
+                <span className="font-black text-2xl">TABLE {order.table_id}</span>
+                <Button size="sm" variant="ghost" onClick={printTicket} className="text-slate-400">
+                  <Printer className="w-5 h-5 mr-2" /> PRINT [cite: 60]
                 </Button>
-
-                {order.status === 'pending' && (
-                  <Button 
-                    onClick={() => updateStatus(order.id, 'cooking')}
-                    className="w-full bg-yellow-600 hover:bg-yellow-700 text-white font-bold text-lg"
-                  >
-                    START COOKING
-                  </Button>
-                )}
-
-                {order.status === 'cooking' && (
-                  <Button 
-                    onClick={() => updateStatus(order.id, 'served')}
-                    className="w-full bg-green-600 hover:bg-green-700 text-white font-bold text-lg"
-                  >
-                    ORDER READY
-                  </Button>
-                )}
               </div>
-            </CardContent>
-          </Card>
-        ))}
+
+              <CardContent className="p-6">
+                <ul className="space-y-4 mb-8">
+                  {order.items.map((item: any, i: number) => (
+                    <li key={i} className="flex justify-between items-center bg-white/5 p-3 rounded-xl">
+                      <span className="font-bold text-lg">{item.name}</span>
+                      <Badge variant="outline" className="border-orange-500 text-orange-500">x1</Badge>
+                    </li>
+                  ))}
+                </ul>
+
+                <div className="flex flex-col gap-3">
+                  {order.status === 'pending' ? (
+                    <Button onClick={() => updateStatus(order.id, 'cooking')} className="w-full bg-yellow-600 py-8 text-xl font-black rounded-2xl">
+                      START COOKING
+                    </Button>
+                  ) : (
+                    <Button onClick={() => updateStatus(order.id, 'served')} className="w-full bg-green-600 py-8 text-xl font-black rounded-2xl">
+                      MARK SERVED
+                    </Button>
+                  )}
+                </div>
+                <p className="text-center text-[10px] text-slate-500 mt-4 uppercase font-black tracking-widest">
+                  <Clock className="w-3 h-3 inline mr-1" /> Order Recieved: {new Date(order.created_at).toLocaleTimeString()}
+                </p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </div>
     </div>
   )

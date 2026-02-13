@@ -13,10 +13,7 @@ export default function VibeGate() {
   const [pax, setPax] = useState(2)
   const [videoLoaded, setVideoLoaded] = useState(false)
 
-  // Preload video check
-  useEffect(() => {
-    setVideoLoaded(true)
-  }, [])
+  useEffect(() => { setVideoLoaded(true) }, [])
 
   const vibes = [
     { id: 'cafe', label: 'Chill Cafe', icon: Coffee, desc: 'Cozy vibes & good coffee' },
@@ -26,51 +23,45 @@ export default function VibeGate() {
 
   const handleNext = () => {
     if (step === 1 && vibe) setStep(2)
-    else if (step === 2) {
-      router.push(`/explore?vibe=${vibe}&pax=${pax}`)
-    }
+    else if (step === 2) router.push(`/explore?vibe=${vibe}&pax=${pax}`)
   }
 
   return (
     <div className="h-[100dvh] w-screen overflow-hidden relative flex flex-col items-center justify-center p-6 bg-black">
       
-      {/* 1. BACKGROUND VIDEO */}
+      {/* 1. BACKGROUND VIDEO (Fixed & Optimized) */}
       <div className="absolute inset-0 z-0">
         <video 
             autoPlay 
             loop 
             muted 
             playsInline
-            className={`w-full h-full object-cover transition-opacity duration-1000 ${videoLoaded ? 'opacity-60' : 'opacity-0'}`}
+            poster="https://images.pexels.com/photos/1684187/pexels-photo-1684187.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1"
+            className={`w-full h-full object-cover transition-opacity duration-1000 ${videoLoaded ? 'opacity-50' : 'opacity-0'}`}
         >
-            <source src="https://joy1.videvo.net/videvo_files/video/free/2019-11/large_watermarked/190301_1_25_11_preview.mp4" type="video/mp4" />
+            {/* Reliable Pexels Party Loop */}
+            <source src="https://videos.pexels.com/video-files/3191572/3191572-hd_1920_1080_25fps.mp4" type="video/mp4" />
         </video>
-        {/* Dark Overlay for readability */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-black/30 backdrop-blur-[2px]" />
+        {/* Dark Overlay */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-black/40 backdrop-blur-[1px]" />
       </div>
 
-      {/* 2. MAIN CONTENT CARD */}
+      {/* 2. CONTENT */}
       <div className="z-10 w-full max-w-md relative">
         <motion.div 
             initial={{ y: 20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
-            className="bg-black/30 backdrop-blur-xl border border-white/10 p-8 rounded-[40px] shadow-2xl shadow-purple-900/20"
+            className="bg-white/10 backdrop-blur-md border border-white/20 p-8 rounded-[40px] shadow-2xl"
         >
           
           <div className="text-center mb-8">
-            <div className="flex justify-center mb-4">
-                <div className="w-12 h-12 bg-white/10 rounded-full flex items-center justify-center animate-pulse">
-                    <Sparkles className="w-6 h-6 text-yellow-400" />
-                </div>
-            </div>
-            <h1 className="text-4xl font-black text-white tracking-tight drop-shadow-lg">
+            <h1 className="text-4xl font-black text-white tracking-tight drop-shadow-xl">
               What's the <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400">Vibe?</span>
             </h1>
             <p className="text-slate-300 text-sm mt-2 font-medium">Curated experiences for tonight.</p>
           </div>
 
           <AnimatePresence mode='wait'>
-            {/* STEP 1: SELECT VIBE */}
             {step === 1 && (
               <motion.div 
                 key="step1"
@@ -84,7 +75,7 @@ export default function VibeGate() {
                     key={v.id}
                     onClick={() => setVibe(v.id)}
                     className={`group relative flex items-center gap-4 p-4 rounded-2xl transition-all border border-white/5 overflow-hidden
-                        ${vibe === v.id ? 'bg-white/20 border-white/40 shadow-[0_0_30px_rgba(255,255,255,0.1)]' : 'bg-white/5 hover:bg-white/10'}`}
+                        ${vibe === v.id ? 'bg-white/20 border-white/40 shadow-lg' : 'bg-white/5 hover:bg-white/10'}`}
                   >
                     <div className={`p-3 rounded-full bg-gradient-to-br from-white/10 to-transparent border border-white/10 group-hover:scale-110 transition-transform`}>
                       <v.icon className="w-5 h-5 text-white" />
@@ -93,13 +84,12 @@ export default function VibeGate() {
                         <span className="block font-bold text-lg text-white">{v.label}</span>
                         <span className="text-xs text-slate-400">{v.desc}</span>
                     </div>
-                    {vibe === v.id && <ArrowRight className="ml-auto text-white animate-bounce-x"/>}
+                    {vibe === v.id && <ArrowRight className="ml-auto text-white animate-pulse"/>}
                   </button>
                 ))}
               </motion.div>
             )}
 
-            {/* STEP 2: SELECT GUESTS */}
             {step === 2 && (
               <motion.div 
                 key="step2"
@@ -124,7 +114,6 @@ export default function VibeGate() {
             )}
           </AnimatePresence>
 
-          {/* ACTION BUTTON */}
           <Button 
             onClick={handleNext}
             disabled={!vibe}
@@ -135,9 +124,7 @@ export default function VibeGate() {
           </Button>
 
           {step === 2 && (
-              <button onClick={() => setStep(1)} className="w-full text-center mt-4 text-xs text-slate-400 hover:text-white transition-colors">
-                  Go Back
-              </button>
+              <button onClick={() => setStep(1)} className="w-full text-center mt-4 text-xs text-slate-400 hover:text-white transition-colors">Go Back</button>
           )}
 
         </motion.div>

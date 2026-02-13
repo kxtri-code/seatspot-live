@@ -18,31 +18,50 @@ function ExploreContent() {
   const [errorMsg, setErrorMsg] = useState('')
 
   useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true)
-      
-      // 1. Get Venues
-      const { data: allVenues, error: venueError } = await supabase.from('venues').select('*')
-      if (venueError) {
-          console.error("Venue Error:", venueError)
-          setErrorMsg(venueError.message)
-      }
+    let isMounted = true // <--- TRACK IF COMPONENT IS ALIVE
 
-      // 2. Get Events
-      const { data: allEvents, error: eventError } = await supabase.from('events').select('*').order('date', { ascending: true }).limit(5)
-      
-      if (allVenues) {
-          const match = allVenues.filter(v => 
-             vibe === 'All' || 
-             (v.type && v.type.toLowerCase().includes(vibe.toLowerCase()))
-          )
-          setVenues(match)
+    const fetchData = async () => {
+      try {
+        setLoading(true)
+        setErrorMsg('') // Clear previous errors
+        
+        // 1. Get Venues
+        const { data: allVenues, error: venueError } = await supabase.from('venues').select('*')
+        if (venueError) throw venueError
+
+        // 2. Get Events
+        const { data: allEvents, error: eventError } = await supabase.from('events').select('*').order('date', { ascending: true }).limit(5)
+        if (eventError) throw eventError
+        
+        // Only update state if the component is still mounted
+        if (isMounted) {
+            if (allVenues) {
+                const match = allVenues.filter(v => 
+                   vibe === 'All' || 
+                   (v.type && v.type.toLowerCase().includes(vibe.toLowerCase()))
+                )
+                setVenues(match)
+            }
+            if (allEvents) setEvents(allEvents)
+        }
+
+      } catch (err: any) {
+         // IGNORE AbortErrors (They are fake errors caused by fast clicks)
+         if (err.name === 'AbortError' || err.message?.includes('aborted')) {
+             console.log('Request cancelled (benign)')
+         } else {
+             console.error("Real Database Error:", err)
+             if (isMounted) setErrorMsg(err.message || 'Failed to load content')
+         }
+      } finally {
+         if (isMounted) setLoading(false)
       }
-      
-      if (allEvents) setEvents(allEvents)
-      setLoading(false)
     }
+
     fetchData()
+
+    // Cleanup function
+    return () => { isMounted = false }
   }, [vibe])
 
   // Reusable Card
@@ -99,6 +118,7 @@ function ExploreContent() {
              <div className="p-6 bg-red-50 text-red-600 rounded-xl border border-red-200 text-center">
                  <p className="font-bold">Database Error:</p>
                  <p className="text-sm">{errorMsg}</p>
+                 <Button onClick={() => window.location.reload()} size="sm" className="mt-4 bg-red-100 text-red-600 hover:bg-red-200 border-none">Retry</Button>
              </div>
         ) : (
             <>

@@ -10,7 +10,6 @@ import { useRouter } from 'next/navigation'
 
 export default function PartnerOnboard() {
   const router = useRouter()
-  const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState({
     name: '',
@@ -20,6 +19,7 @@ export default function PartnerOnboard() {
     image_url: ''
   })
 
+  // IMAGE UPLOAD
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     try {
         setLoading(true)
@@ -27,49 +27,75 @@ export default function PartnerOnboard() {
         
         const file = e.target.files[0]
         const fileName = `venue-${Date.now()}`
-        const { error } = await supabase.storage.from('images').upload(fileName, file)
         
-        if (error) throw error
+        // Upload
+        const { error: uploadError } = await supabase.storage.from('images').upload(fileName, file)
+        if (uploadError) throw uploadError
         
+        // Get URL
         const { data } = supabase.storage.from('images').getPublicUrl(fileName)
         setFormData({ ...formData, image_url: data.publicUrl })
+        alert("Image Uploaded Successfully!")
+
     } catch (err: any) {
+        console.error("Upload Error:", err)
         alert("Upload failed: " + err.message)
     } finally {
         setLoading(false)
     }
   }
 
+  // SUBMIT APPLICATION
   const handleSubmit = async () => {
-    setLoading(true)
-    const { data: { session } } = await supabase.auth.getSession()
-    
-    if (!session) {
-        alert("Please log in first!")
+    try {
+        setLoading(true)
+        console.log("Starting submission...")
+
+        // 1. Check Session
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) {
+            alert("Session expired. Please log in again.")
+            router.push('/login')
+            return
+        }
+        console.log("User ID:", session.user.id)
+
+        // 2. Upgrade User Role to ADMIN
+        const { error: profileError } = await supabase
+            .from('profiles')
+            .update({ role: 'admin' })
+            .eq('id', session.user.id)
+        
+        if (profileError) {
+            console.error("Profile Error:", profileError)
+            throw new Error("Failed to update user role: " + profileError.message)
+        }
+
+        // 3. Create the Venue
+        const { error: venueError } = await supabase.from('venues').insert([{
+            owner_id: session.user.id, // Links venue to user
+            name: formData.name,
+            description: formData.description,
+            location: formData.location,
+            image_url: formData.image_url || 'https://images.unsplash.com/photo-1575444758702-4a6b9222336e',
+            is_featured: false, // Pending Approval
+            rating: 5.0
+        }])
+
+        if (venueError) {
+            console.error("Venue Error:", venueError)
+            throw new Error("Failed to create venue: " + venueError.message)
+        }
+
+        // 4. Success!
+        alert("Venue Registered! Welcome, Partner.")
+        router.push('/dashboard')
+
+    } catch (error: any) {
+        alert(error.message)
+    } finally {
         setLoading(false)
-        return
     }
-
-    // 1. Upgrade User Role to ADMIN
-    await supabase.from('profiles').update({ role: 'admin' }).eq('id', session.user.id)
-
-    // 2. Create the Venue
-    const { error } = await supabase.from('venues').insert([{
-        owner_id: session.user.id,
-        name: formData.name,
-        description: formData.description,
-        location: formData.location,
-        image_url: formData.image_url || 'https://images.unsplash.com/photo-1575444758702-4a6b9222336e',
-        is_featured: false, // Pending Approval
-        rating: 5.0
-    }])
-
-    if (error) {
-        alert("Error: " + error.message)
-    } else {
-        router.push('/dashboard') // Send them to their new dashboard
-    }
-    setLoading(false)
   }
 
   return (

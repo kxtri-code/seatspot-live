@@ -15,15 +15,15 @@ function ExploreContent() {
   const [venues, setVenues] = useState<any[]>([])
   const [events, setEvents] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [errorMsg, setErrorMsg] = useState('')
+  const [isFallback, setIsFallback] = useState(false)
+  const [debugInfo, setDebugInfo] = useState('')
 
   useEffect(() => {
-    let isMounted = true // <--- TRACK IF COMPONENT IS ALIVE
+    let isMounted = true
 
     const fetchData = async () => {
       try {
         setLoading(true)
-        setErrorMsg('') // Clear previous errors
         
         // 1. Get Venues
         const { data: allVenues, error: venueError } = await supabase.from('venues').select('*')
@@ -31,36 +31,38 @@ function ExploreContent() {
 
         // 2. Get Events
         const { data: allEvents, error: eventError } = await supabase.from('events').select('*').order('date', { ascending: true }).limit(5)
-        if (eventError) throw eventError
         
-        // Only update state if the component is still mounted
         if (isMounted) {
-            if (allVenues) {
-                const match = allVenues.filter(v => 
+            setDebugInfo(`DB returned: ${allVenues?.length || 0} venues`)
+
+            if (allVenues && allVenues.length > 0) {
+                // Try to filter
+                let match = allVenues.filter(v => 
                    vibe === 'All' || 
                    (v.type && v.type.toLowerCase().includes(vibe.toLowerCase()))
                 )
-                setVenues(match)
+
+                // SMART FALLBACK: If filter returns 0, show ALL instead
+                if (match.length === 0) {
+                    setIsFallback(true)
+                    setVenues(allVenues) // Show everything
+                } else {
+                    setIsFallback(false)
+                    setVenues(match)
+                }
             }
+            
             if (allEvents) setEvents(allEvents)
         }
 
       } catch (err: any) {
-         // IGNORE AbortErrors (They are fake errors caused by fast clicks)
-         if (err.name === 'AbortError' || err.message?.includes('aborted')) {
-             console.log('Request cancelled (benign)')
-         } else {
-             console.error("Real Database Error:", err)
-             if (isMounted) setErrorMsg(err.message || 'Failed to load content')
-         }
+         console.error("Data Load Error:", err)
       } finally {
          if (isMounted) setLoading(false)
       }
     }
 
     fetchData()
-
-    // Cleanup function
     return () => { isMounted = false }
   }, [vibe])
 
@@ -114,12 +116,6 @@ function ExploreContent() {
       <div className="p-4 space-y-8">
         {loading ? (
             <div className="flex justify-center py-20"><Loader2 className="animate-spin text-blue-600"/></div>
-        ) : errorMsg ? (
-             <div className="p-6 bg-red-50 text-red-600 rounded-xl border border-red-200 text-center">
-                 <p className="font-bold">Database Error:</p>
-                 <p className="text-sm">{errorMsg}</p>
-                 <Button onClick={() => window.location.reload()} size="sm" className="mt-4 bg-red-100 text-red-600 hover:bg-red-200 border-none">Retry</Button>
-             </div>
         ) : (
             <>
                 {/* 1. EVENTS ROW */}
@@ -152,16 +148,24 @@ function ExploreContent() {
                 {/* 2. VENUE GRID */}
                 <div>
                      <h2 className="text-xl font-black text-slate-900 mb-4 flex items-center gap-2">
-                            <Heart className="w-5 h-5 text-red-500" /> Top Places
+                            <Heart className="w-5 h-5 text-red-500" /> {isFallback ? 'Popular Places' : 'Top Places'}
                     </h2>
+                    
+                    {/* FALLBACK MESSAGE */}
+                    {isFallback && (
+                         <div className="mb-6 p-4 bg-blue-50 text-blue-800 rounded-xl border border-blue-100 text-sm font-medium">
+                             We couldn't find specific "{vibe}" spots, so we're showing you the most popular places in town instead!
+                         </div>
+                    )}
+
                     {venues.length > 0 ? (
                         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                             {venues.map(v => <VenueCard key={v.id} venue={v} />)}
                         </div>
                     ) : (
                         <div className="text-center py-10 bg-white rounded-3xl border border-dashed border-slate-200">
-                             <p className="text-slate-400">No specific spots for "{vibe}" yet.</p>
-                             <p className="text-sm mt-1">Try "Night Club" or "Chill Cafe"</p>
+                             <p className="text-slate-400">No venues found in the system.</p>
+                             <p className="text-[10px] text-slate-300 mt-2">{debugInfo}</p>
                         </div>
                     )}
                 </div>

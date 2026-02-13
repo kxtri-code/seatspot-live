@@ -6,44 +6,6 @@ import { supabase } from '@/lib/supabaseClient'
 import { Loader2, MapPin, Star, ArrowLeft, Compass, Heart, Ticket } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
-// --- BACKUP DEMO DATA (Guarantees Content Always Shows) ---
-const BACKUP_VENUES = [
-  {
-    id: 'demo-1',
-    name: 'SkyDeck Lounge',
-    location: '4th Mile, Dimapur',
-    type: 'club',
-    rating: 4.8,
-    image_url: 'https://images.unsplash.com/photo-1566417713940-fe7c737a9ef2'
-  },
-  {
-    id: 'demo-2',
-    name: 'The Beanery',
-    location: 'Circular Road',
-    type: 'cafe',
-    rating: 4.9,
-    image_url: 'https://images.unsplash.com/photo-1554118811-1e0d58224f24'
-  },
-  {
-    id: 'demo-3',
-    name: 'Saffron & Spice',
-    location: 'Duncan Basti',
-    type: 'restaurant',
-    rating: 4.7,
-    image_url: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4'
-  }
-]
-
-const BACKUP_EVENTS = [
-  {
-    id: 'evt-1',
-    title: 'Saturday Night Live',
-    date: new Date().toISOString(),
-    venue_name: 'SkyDeck Lounge',
-    image_url: 'https://images.unsplash.com/photo-1514525253440-b393452e8d26'
-  }
-]
-
 function ExploreContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -53,40 +15,31 @@ function ExploreContent() {
   const [venues, setVenues] = useState<any[]>([])
   const [events, setEvents] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [usingBackup, setUsingBackup] = useState(false)
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         setLoading(true)
         
-        // 1. Try DB Fetch
-        const { data: dbVenues, error: vErr } = await supabase.from('venues').select('*')
-        const { data: dbEvents, error: eErr } = await supabase.from('events').select('*').limit(5)
-
-        if (vErr || !dbVenues || dbVenues.length === 0) {
-           throw new Error("DB Empty or Failed") // Trigger Backup
-        }
-
-        // 2. Filter DB Data
-        const match = dbVenues.filter(v => 
-           vibe === 'All' || (v.type && v.type.toLowerCase().includes(vibe.toLowerCase()))
-        )
+        // 1. Get Venues (Force fresh fetch)
+        const { data: allVenues, error: vErr } = await supabase.from('venues').select('*')
         
-        // If filter returns empty, show ALL DB venues (Smart Fallback)
-        setVenues(match.length > 0 ? match : dbVenues)
-        setEvents(dbEvents || [])
-        setUsingBackup(false)
+        // 2. Get Events
+        const { data: allEvents, error: eErr } = await supabase.from('events').select('*').order('date', { ascending: true })
+
+        if (allVenues) {
+            // Filter logic
+            const match = allVenues.filter(v => 
+               vibe === 'All' || 
+               (v.type && v.type.toLowerCase().includes(vibe.toLowerCase()))
+            )
+            setVenues(match.length > 0 ? match : allVenues) // Fallback to ALL if filter is empty
+        }
+        
+        if (allEvents) setEvents(allEvents)
 
       } catch (err) {
-         console.log("Using Backup Data due to:", err)
-         // 3. LOAD BACKUP DATA (If DB Fails)
-         const match = BACKUP_VENUES.filter(v => 
-            vibe === 'All' || v.type.includes(vibe.toLowerCase())
-         )
-         setVenues(match.length > 0 ? match : BACKUP_VENUES)
-         setEvents(BACKUP_EVENTS)
-         setUsingBackup(true)
+         console.error("Fetch error:", err)
       } finally {
          setLoading(false)
       }
@@ -94,38 +47,62 @@ function ExploreContent() {
     fetchData()
   }, [vibe])
 
-  // Reusable Card
-  const VenueCard = ({ venue }: { venue: any }) => (
-    <div 
-        onClick={() => router.push(`/venue/${venue.id}`)}
-        className="bg-white rounded-3xl overflow-hidden shadow-sm border border-slate-100 active:scale-95 transition-transform cursor-pointer group h-full flex flex-col"
-    >
-        <div className="h-48 overflow-hidden relative">
-            <img src={venue.image_url} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-            <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-md px-2 py-1 rounded-full text-xs font-bold flex items-center gap-1 shadow-sm">
-                <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" /> {venue.rating}
+  // UPGRADED CARD COMPONENT
+  const VenueCard = ({ venue }: { venue: any }) => {
+    const vibeScore = venue.rating ? Math.round(venue.rating * 20) : 85; 
+    
+    return (
+        <div 
+            onClick={() => router.push(`/venue/${venue.id}`)}
+            className="bg-white rounded-3xl overflow-hidden shadow-sm border border-slate-100 active:scale-95 transition-transform cursor-pointer group h-full flex flex-col relative"
+        >
+            <div className="h-48 overflow-hidden relative">
+                <img 
+                    src={venue.image_url} 
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+                    alt={venue.name}
+                />
+                <div className="absolute top-3 right-3 bg-black/60 backdrop-blur-md px-2 py-1 rounded-full flex items-center gap-1 shadow-sm border border-white/10">
+                    <span className="text-[10px] text-white font-bold uppercase">Vibe</span>
+                    <div className="w-6 h-6 rounded-full flex items-center justify-center bg-gradient-to-tr from-purple-500 to-pink-500 text-[10px] font-black text-white">
+                        {vibeScore}
+                    </div>
+                </div>
+                <div className="absolute bottom-3 left-3 bg-white/90 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-slate-900 uppercase tracking-wider shadow-sm">
+                    {venue.type}
+                </div>
             </div>
-            <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-white uppercase tracking-wider">
-                {venue.type}
+
+            <div className="p-4 flex flex-col gap-2">
+                <div className="flex justify-between items-start">
+                    <div>
+                        <h3 className="font-bold text-lg text-slate-900 leading-tight">{venue.name}</h3>
+                        <div className="flex items-center gap-1 text-slate-500 text-xs mt-1">
+                            <MapPin className="w-3 h-3 text-red-400" /> {venue.location}
+                        </div>
+                    </div>
+                </div>
+
+                <p className="text-slate-500 text-xs line-clamp-2 mt-1">{venue.description}</p>
+                
+                <div className="mt-3 pt-3 border-t border-slate-50 flex items-center justify-between">
+                    <div className="flex items-center gap-3 text-slate-400">
+                        <div className="flex items-center gap-1 text-xs">
+                            <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />
+                            <span>{venue.rating}</span>
+                        </div>
+                    </div>
+                    <span className="text-xs font-bold text-slate-900 flex items-center gap-1">
+                        Book <ArrowLeft className="w-3 h-3 rotate-180" />
+                    </span>
+                </div>
             </div>
         </div>
-        <div className="p-5">
-            <h3 className="font-bold text-lg text-slate-900">{venue.name}</h3>
-            <div className="flex items-center gap-1 text-slate-500 text-sm mt-1">
-                <MapPin className="w-3 h-3" /> {venue.location}
-            </div>
-            <div className="mt-4 pt-4 border-t border-slate-50 flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-400">For {pax} Guests</span>
-                <span className="text-xs font-bold text-blue-600">View Tables &rarr;</span>
-            </div>
-        </div>
-    </div>
-  )
+    )
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
-      
-      {/* HEADER */}
       <div className="bg-white sticky top-0 z-20 px-4 py-4 shadow-sm flex items-center justify-between">
         <div className="flex items-center gap-3">
             <Button variant="ghost" size="icon" onClick={() => router.back()} className="rounded-full hover:bg-slate-100">
@@ -146,7 +123,6 @@ function ExploreContent() {
             <div className="flex justify-center py-20"><Loader2 className="animate-spin text-blue-600"/></div>
         ) : (
             <>
-                {/* 1. EVENTS ROW */}
                 {events.length > 0 && (
                     <div>
                         <h2 className="text-xl font-black text-slate-900 mb-4 flex items-center gap-2">
@@ -173,12 +149,10 @@ function ExploreContent() {
                     </div>
                 )}
 
-                {/* 2. VENUE GRID */}
                 <div>
                      <h2 className="text-xl font-black text-slate-900 mb-4 flex items-center gap-2">
-                            <Heart className="w-5 h-5 text-red-500" /> {usingBackup ? 'Recommended (Demo)' : 'Top Places'}
+                            <Heart className="w-5 h-5 text-red-500" /> Top Places
                     </h2>
-                    
                     {venues.length > 0 ? (
                         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                             {venues.map(v => <VenueCard key={v.id} venue={v} />)}

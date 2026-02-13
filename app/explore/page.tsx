@@ -6,6 +6,44 @@ import { supabase } from '@/lib/supabaseClient'
 import { Loader2, MapPin, Star, ArrowLeft, Compass, Heart, Ticket } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
+// --- BACKUP DEMO DATA (Guarantees Content Always Shows) ---
+const BACKUP_VENUES = [
+  {
+    id: 'demo-1',
+    name: 'SkyDeck Lounge',
+    location: '4th Mile, Dimapur',
+    type: 'club',
+    rating: 4.8,
+    image_url: 'https://images.unsplash.com/photo-1566417713940-fe7c737a9ef2'
+  },
+  {
+    id: 'demo-2',
+    name: 'The Beanery',
+    location: 'Circular Road',
+    type: 'cafe',
+    rating: 4.9,
+    image_url: 'https://images.unsplash.com/photo-1554118811-1e0d58224f24'
+  },
+  {
+    id: 'demo-3',
+    name: 'Saffron & Spice',
+    location: 'Duncan Basti',
+    type: 'restaurant',
+    rating: 4.7,
+    image_url: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4'
+  }
+]
+
+const BACKUP_EVENTS = [
+  {
+    id: 'evt-1',
+    title: 'Saturday Night Live',
+    date: new Date().toISOString(),
+    venue_name: 'SkyDeck Lounge',
+    image_url: 'https://images.unsplash.com/photo-1514525253440-b393452e8d26'
+  }
+]
+
 function ExploreContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -15,55 +53,45 @@ function ExploreContent() {
   const [venues, setVenues] = useState<any[]>([])
   const [events, setEvents] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [isFallback, setIsFallback] = useState(false)
-  const [debugInfo, setDebugInfo] = useState('')
+  const [usingBackup, setUsingBackup] = useState(false)
 
   useEffect(() => {
-    let isMounted = true
-
     const fetchData = async () => {
       try {
         setLoading(true)
         
-        // 1. Get Venues
-        const { data: allVenues, error: venueError } = await supabase.from('venues').select('*')
-        if (venueError) throw venueError
+        // 1. Try DB Fetch
+        const { data: dbVenues, error: vErr } = await supabase.from('venues').select('*')
+        const { data: dbEvents, error: eErr } = await supabase.from('events').select('*').limit(5)
 
-        // 2. Get Events
-        const { data: allEvents, error: eventError } = await supabase.from('events').select('*').order('date', { ascending: true }).limit(5)
-        
-        if (isMounted) {
-            setDebugInfo(`DB returned: ${allVenues?.length || 0} venues`)
-
-            if (allVenues && allVenues.length > 0) {
-                // Try to filter
-                let match = allVenues.filter(v => 
-                   vibe === 'All' || 
-                   (v.type && v.type.toLowerCase().includes(vibe.toLowerCase()))
-                )
-
-                // SMART FALLBACK: If filter returns 0, show ALL instead
-                if (match.length === 0) {
-                    setIsFallback(true)
-                    setVenues(allVenues) // Show everything
-                } else {
-                    setIsFallback(false)
-                    setVenues(match)
-                }
-            }
-            
-            if (allEvents) setEvents(allEvents)
+        if (vErr || !dbVenues || dbVenues.length === 0) {
+           throw new Error("DB Empty or Failed") // Trigger Backup
         }
 
-      } catch (err: any) {
-         console.error("Data Load Error:", err)
+        // 2. Filter DB Data
+        const match = dbVenues.filter(v => 
+           vibe === 'All' || (v.type && v.type.toLowerCase().includes(vibe.toLowerCase()))
+        )
+        
+        // If filter returns empty, show ALL DB venues (Smart Fallback)
+        setVenues(match.length > 0 ? match : dbVenues)
+        setEvents(dbEvents || [])
+        setUsingBackup(false)
+
+      } catch (err) {
+         console.log("Using Backup Data due to:", err)
+         // 3. LOAD BACKUP DATA (If DB Fails)
+         const match = BACKUP_VENUES.filter(v => 
+            vibe === 'All' || v.type.includes(vibe.toLowerCase())
+         )
+         setVenues(match.length > 0 ? match : BACKUP_VENUES)
+         setEvents(BACKUP_EVENTS)
+         setUsingBackup(true)
       } finally {
-         if (isMounted) setLoading(false)
+         setLoading(false)
       }
     }
-
     fetchData()
-    return () => { isMounted = false }
   }, [vibe])
 
   // Reusable Card
@@ -148,24 +176,16 @@ function ExploreContent() {
                 {/* 2. VENUE GRID */}
                 <div>
                      <h2 className="text-xl font-black text-slate-900 mb-4 flex items-center gap-2">
-                            <Heart className="w-5 h-5 text-red-500" /> {isFallback ? 'Popular Places' : 'Top Places'}
+                            <Heart className="w-5 h-5 text-red-500" /> {usingBackup ? 'Recommended (Demo)' : 'Top Places'}
                     </h2>
                     
-                    {/* FALLBACK MESSAGE */}
-                    {isFallback && (
-                         <div className="mb-6 p-4 bg-blue-50 text-blue-800 rounded-xl border border-blue-100 text-sm font-medium">
-                             We couldn't find specific "{vibe}" spots, so we're showing you the most popular places in town instead!
-                         </div>
-                    )}
-
                     {venues.length > 0 ? (
                         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                             {venues.map(v => <VenueCard key={v.id} venue={v} />)}
                         </div>
                     ) : (
                         <div className="text-center py-10 bg-white rounded-3xl border border-dashed border-slate-200">
-                             <p className="text-slate-400">No venues found in the system.</p>
-                             <p className="text-[10px] text-slate-300 mt-2">{debugInfo}</p>
+                             <p className="text-slate-400">No venues found.</p>
                         </div>
                     )}
                 </div>

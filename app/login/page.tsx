@@ -16,20 +16,28 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
 
-  // 1. GOOGLE LOGIN (The part you just enabled)
+  // 1. GOOGLE LOGIN (With Dynamic Redirect Fix)
   const handleGoogleLogin = async () => {
     setLoading(true)
+    
+    // DYNAMIC URL DETECTION
+    // This ensures that if you are on 'seatspot-live.vercel.app', 
+    // it redirects there, not to localhost.
+    const origin = (typeof window !== 'undefined' && window.location.origin) 
+      ? window.location.origin 
+      : ''
+      
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        // This redirects back to your site after Google says "Yes"
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: `${origin}/auth/callback`,
         queryParams: {
           access_type: 'offline',
           prompt: 'consent',
         },
       },
     })
+    
     if (error) {
         setError(error.message)
         setLoading(false)

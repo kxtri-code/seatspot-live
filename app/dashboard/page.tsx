@@ -8,11 +8,14 @@ import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea' 
-import { Users, TrendingUp, IndianRupee, Calendar, Upload, Instagram, Facebook, Youtube, Image as ImageIcon } from 'lucide-react'
+import { Users, TrendingUp, IndianRupee, Calendar, Image as ImageIcon, Upload, Instagram, Facebook, Youtube, Clock, CheckCircle } from 'lucide-react'
 import AdminMap from '@/components/AdminMap'
 
 export default function OwnerDashboard() {
-  const [stats, setStats] = useState({ totalBookings: 0, activeGuests: 0, totalRevenue: 0, occupancyRate: 0 })
+  const [stats, setStats] = useState({ totalSeats: 0, activeGuests: 0, totalRevenue: 0, occupancyRate: 0 })
+  const [recentBookings, setRecentBookings] = useState<any[]>([])
+  
+  // Event Form State (Kept from previous version)
   const [newEvent, setNewEvent] = useState({ 
     title: '', venue_name: '', date: '', end_time: '', price: 0, 
     description: '', ticket_type: 'seated', ticket_url: '', image_url: '',
@@ -21,24 +24,46 @@ export default function OwnerDashboard() {
   const [isEventModalOpen, setEventModalOpen] = useState(false)
   const [uploading, setUploading] = useState(false)
 
+  // TICKET PRICE (Hardcoded for demo, normally fetched from DB)
+  const TICKET_PRICE = 590 // 500 + 90 GST
+
   useEffect(() => {
-    fetchData()
+    fetchLiveStats()
+    
+    // Optional: Subscribe to Real-time changes
+    const channel = supabase
+      .channel('schema-db-changes')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'seats' }, (payload) => {
+        fetchLiveStats() // Refresh whenever a seat changes
+      })
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
   }, [])
 
-  const fetchData = async () => {
+  const fetchLiveStats = async () => {
+    // 1. Get ALL seats for this venue (In real app, filter by user's venue_id)
     const { data: seats } = await supabase.from('seats').select('*')
+    
     if (seats) {
       const occupied = seats.filter(s => s.status === 'occupied')
+      
       setStats({
-        totalBookings: seats.length,
+        totalSeats: seats.length,
         activeGuests: occupied.length,
-        totalRevenue: occupied.length * 500,
-        occupancyRate: seats.length > 0 ? (occupied.length / seats.length) * 100 : 0
+        totalRevenue: occupied.length * TICKET_PRICE,
+        occupancyRate: seats.length > 0 ? Math.round((occupied.length / seats.length) * 100) : 0
       })
+
+      // Create a "Recent Activity" feed from the occupied seats
+      setRecentBookings(occupied.slice(0, 5))
     }
   }
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // ... (Keep handleImageUpload and handleCreateEvent same as before) ...
+  // [Paste the previous handleImageUpload and handleCreateEvent functions here if you need them, 
+  //  otherwise they are preserved if you only update the stats logic]
+   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     try {
       setUploading(true)
       if (!e.target.files || e.target.files.length === 0) return
@@ -64,7 +89,7 @@ export default function OwnerDashboard() {
     const { error } = await supabase.from('events').insert([{
         ...newEvent,
         price_per_seat: newEvent.price,
-        image_url: newEvent.image_url || 'https://images.unsplash.com/photo-1514525253440-b393452e8d26', // Fallback image
+        image_url: newEvent.image_url || 'https://images.unsplash.com/photo-1514525253440-b393452e8d26', 
         vibe_score: 95
     }])
     if (!error) {
@@ -79,92 +104,139 @@ export default function OwnerDashboard() {
     <div className="min-h-screen bg-slate-50 p-6 md:p-12 pt-24">
       <div className="max-w-7xl mx-auto space-y-8">
         
-        <div className="flex justify-between items-center">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h1 className="text-3xl font-black text-slate-900 uppercase">Venue Manager</h1>
-            <p className="text-slate-500 font-medium">Manage Events & Floor</p>
+            <p className="text-slate-500 font-medium">Live Business Overview</p>
           </div>
           
           <Dialog open={isEventModalOpen} onOpenChange={setEventModalOpen}>
               <DialogTrigger asChild>
-                  <Button className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-6 px-6 rounded-xl">
+                  <Button className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 px-6 rounded-xl shadow-lg shadow-blue-200">
                       <Calendar className="w-5 h-5 mr-2"/> Create Event
                   </Button>
               </DialogTrigger>
               <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-                  <DialogHeader><DialogTitle>Add New Event</DialogTitle></DialogHeader>
-                  <div className="space-y-4 py-4">
-                      
-                      {/* DETAILS */}
-                      <div className="space-y-2">
-                        <label className="text-xs font-bold uppercase text-slate-500">Event Info</label>
-                        <Input placeholder="Event Title" onChange={e => setNewEvent({...newEvent, title: e.target.value})} />
-                        <Input placeholder="Venue Name" onChange={e => setNewEvent({...newEvent, venue_name: e.target.value})} />
-                        <Textarea placeholder="Description..." onChange={e => setNewEvent({...newEvent, description: e.target.value})} />
-                      </div>
-
-                      {/* TIMING */}
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-500">Starts</label>
-                            <Input type="datetime-local" onChange={e => setNewEvent({...newEvent, date: e.target.value})} />
+                   <DialogHeader><DialogTitle>Add New Event</DialogTitle></DialogHeader>
+                   <div className="space-y-4 py-4">
+                      {/* ... (Keep the Event Form Inputs exactly as before) ... */}
+                        <div className="space-y-2">
+                            <label className="text-xs font-bold uppercase text-slate-500">Event Info</label>
+                            <Input placeholder="Event Title" onChange={e => setNewEvent({...newEvent, title: e.target.value})} />
+                            <Input placeholder="Venue Name" onChange={e => setNewEvent({...newEvent, venue_name: e.target.value})} />
+                            <Textarea placeholder="Description..." onChange={e => setNewEvent({...newEvent, description: e.target.value})} />
                         </div>
-                        <div className="space-y-1">
-                            <label className="text-[10px] font-bold text-slate-500">Ends</label>
-                            <Input type="datetime-local" onChange={e => setNewEvent({...newEvent, end_time: e.target.value})} />
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-slate-500">Starts</label>
+                                <Input type="datetime-local" onChange={e => setNewEvent({...newEvent, date: e.target.value})} />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-bold text-slate-500">Ends</label>
+                                <Input type="datetime-local" onChange={e => setNewEvent({...newEvent, end_time: e.target.value})} />
+                            </div>
                         </div>
-                      </div>
-
-                      {/* SOCIALS */}
-                      <div className="space-y-2">
-                         <label className="text-xs font-bold uppercase text-slate-500">Social Links</label>
-                         <div className="flex gap-2"><Instagram className="w-4 h-4 mt-3 text-slate-400"/><Input placeholder="Instagram URL" onChange={e => setNewEvent({...newEvent, instagram_url: e.target.value})} /></div>
-                         <div className="flex gap-2"><Facebook className="w-4 h-4 mt-3 text-slate-400"/><Input placeholder="Facebook URL" onChange={e => setNewEvent({...newEvent, facebook_url: e.target.value})} /></div>
-                      </div>
-
-                      {/* IMAGE */}
-                      <div className="space-y-2 bg-slate-50 p-4 rounded-xl border border-dashed border-slate-300">
-                        <label className="text-xs font-bold uppercase text-slate-500 flex justify-between">
-                            Event Banner <span className="text-[10px] text-blue-600">Rec: 1200x600px</span>
-                        </label>
-                        <div className="flex items-center gap-4">
+                        <div className="space-y-2">
+                             <label className="text-xs font-bold uppercase text-slate-500">Social Links</label>
+                             <div className="flex gap-2"><Instagram className="w-4 h-4 mt-3 text-slate-400"/><Input placeholder="Instagram URL" onChange={e => setNewEvent({...newEvent, instagram_url: e.target.value})} /></div>
+                             <div className="flex gap-2"><Facebook className="w-4 h-4 mt-3 text-slate-400"/><Input placeholder="Facebook URL" onChange={e => setNewEvent({...newEvent, facebook_url: e.target.value})} /></div>
+                        </div>
+                        <div className="space-y-2 bg-slate-50 p-4 rounded-xl border border-dashed border-slate-300">
+                            <label className="text-xs font-bold uppercase text-slate-500 flex justify-between">Event Banner</label>
                             <Input type="file" onChange={handleImageUpload} disabled={uploading} className="text-xs" />
-                            {uploading && <span className="text-xs text-blue-500 animate-pulse">Uploading...</span>}
                         </div>
-                        {newEvent.image_url && <p className="text-[10px] text-green-600 mt-1">Image Ready!</p>}
-                      </div>
-
-                      <Button onClick={handleCreateEvent} disabled={uploading} className="w-full bg-blue-600 text-white font-bold py-6 rounded-xl">
-                          Publish Event
-                      </Button>
-                  </div>
+                        <Button onClick={handleCreateEvent} disabled={uploading} className="w-full bg-blue-600 text-white font-bold py-6 rounded-xl">Publish Event</Button>
+                   </div>
               </DialogContent>
           </Dialog>
         </div>
 
-        {/* STATS */}
+        {/* STATS GRID */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          <StatCard title="Active Guests" value={stats.activeGuests} icon={Users} color="text-blue-600" />
-          <StatCard title="Occupancy" value={`${Math.round(stats.occupancyRate)}%`} icon={TrendingUp} color="text-orange-500" />
-          <StatCard title="Revenue" value={`₹${stats.totalRevenue}`} icon={IndianRupee} color="text-green-600" />
-          <StatCard title="Tables" value={stats.totalBookings} icon={Calendar} color="text-purple-600" />
+          <StatCard 
+            title="Total Revenue" 
+            value={`₹${stats.totalRevenue.toLocaleString()}`} 
+            icon={IndianRupee} 
+            color="text-green-600" 
+            sub="Today's Earnings"
+          />
+          <StatCard 
+            title="Active Guests" 
+            value={stats.activeGuests} 
+            icon={Users} 
+            color="text-blue-600" 
+            sub="Currently Seated"
+          />
+          <StatCard 
+            title="Occupancy" 
+            value={`${stats.occupancyRate}%`} 
+            icon={TrendingUp} 
+            color="text-orange-500" 
+            sub={`${stats.activeGuests}/${stats.totalSeats} Seats`}
+          />
+           <StatCard 
+            title="Total Capacity" 
+            value={stats.totalSeats} 
+            icon={Calendar} 
+            color="text-purple-600" 
+            sub="Registered Tables"
+          />
         </div>
 
-        <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-8">
-            <h3 className="text-xl font-bold mb-6">Live Floor Overview</h3>
-            <div className="bg-slate-50 rounded-2xl p-4 flex justify-center overflow-hidden"><AdminMap /></div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* LIVE MAP */}
+            <div className="lg:col-span-2 bg-white rounded-3xl shadow-sm border border-slate-100 p-8">
+                <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                    Live Floor Overview
+                </h3>
+                <div className="bg-slate-50 rounded-2xl p-4 flex justify-center overflow-hidden">
+                    <AdminMap />
+                </div>
+            </div>
+
+            {/* RECENT BOOKINGS FEED */}
+            <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6">
+                <h3 className="text-lg font-bold mb-4">Recent Bookings</h3>
+                <div className="space-y-4">
+                    {recentBookings.length > 0 ? (
+                        recentBookings.map((seat, i) => (
+                            <div key={i} className="flex items-center gap-4 p-3 bg-slate-50 rounded-xl border border-slate-100">
+                                <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-green-600 font-bold">
+                                    <CheckCircle className="w-5 h-5"/>
+                                </div>
+                                <div>
+                                    <p className="text-sm font-bold text-slate-900">{seat.guest_name || 'Anonymous'}</p>
+                                    <p className="text-xs text-slate-500">Booked Table {seat.label}</p>
+                                </div>
+                                <div className="ml-auto text-xs font-bold text-green-600">+₹590</div>
+                            </div>
+                        ))
+                    ) : (
+                        <p className="text-slate-400 text-sm text-center py-10">No bookings yet today.</p>
+                    )}
+                </div>
+            </div>
         </div>
+
       </div>
     </div>
   )
 }
 
-function StatCard({ title, value, icon: Icon, color }: any) {
+function StatCard({ title, value, icon: Icon, color, sub }: any) {
   return (
-    <Card className="rounded-3xl border-none shadow-sm overflow-hidden">
-      <CardContent className="p-6 flex justify-between items-center">
-        <div><p className="text-xs font-bold text-slate-400 uppercase">{title}</p><h4 className={`text-3xl font-black ${color}`}>{value}</h4></div>
-        <div className="p-3 bg-slate-50 rounded-2xl"><Icon className={`w-6 h-6 ${color}`} /></div>
+    <Card className="rounded-3xl border-none shadow-sm overflow-hidden bg-white">
+      <CardContent className="p-6">
+        <div className="flex justify-between items-start mb-4">
+             <div className="p-3 bg-slate-50 rounded-2xl"><Icon className={`w-6 h-6 ${color}`} /></div>
+             <Badge variant="outline" className="text-xs font-normal text-slate-400 border-slate-200">Today</Badge>
+        </div>
+        <div>
+            <h4 className={`text-4xl font-black ${color} tracking-tight`}>{value}</h4>
+            <p className="text-sm font-bold text-slate-900 mt-1">{title}</p>
+            <p className="text-xs text-slate-400 mt-1">{sub}</p>
+        </div>
       </CardContent>
     </Card>
   )

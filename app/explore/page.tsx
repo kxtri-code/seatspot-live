@@ -3,7 +3,7 @@
 import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
-import { Loader2, MapPin, Star, ArrowLeft, Compass, Heart } from 'lucide-react'
+import { Loader2, MapPin, Star, ArrowLeft, Compass, Heart, Ticket } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 function ExploreContent() {
@@ -13,61 +13,58 @@ function ExploreContent() {
   const pax = searchParams.get('pax') || '2'
   
   const [venues, setVenues] = useState<any[]>([])
-  const [otherVenues, setOtherVenues] = useState<any[]>([])
+  const [events, setEvents] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [errorMsg, setErrorMsg] = useState('')
 
   useEffect(() => {
-    const fetchVenues = async () => {
-      // 1. Get ALL venues
-      const { data, error } = await supabase.from('venues').select('*')
+    const fetchData = async () => {
+      setLoading(true)
       
-      if (data) {
-          // 2. Filter in memory (More reliable than DB strict matching)
-          // "Fuzzy match": If vibe is "club", it matches "Night Club", "Club", "Bar", etc.
-          const match = data.filter(v => 
+      // 1. Get Venues
+      const { data: allVenues, error: venueError } = await supabase.from('venues').select('*')
+      if (venueError) {
+          console.error("Venue Error:", venueError)
+          setErrorMsg(venueError.message)
+      }
+
+      // 2. Get Events
+      const { data: allEvents, error: eventError } = await supabase.from('events').select('*').order('date', { ascending: true }).limit(5)
+      
+      if (allVenues) {
+          const match = allVenues.filter(v => 
              vibe === 'All' || 
              (v.type && v.type.toLowerCase().includes(vibe.toLowerCase()))
           )
-
-          // 3. Get everything else for the "Explore More" section
-          const others = data.filter(v => 
-             !v.type || !v.type.toLowerCase().includes(vibe.toLowerCase())
-          )
-
           setVenues(match)
-          setOtherVenues(others)
       }
+      
+      if (allEvents) setEvents(allEvents)
       setLoading(false)
     }
-    fetchVenues()
+    fetchData()
   }, [vibe])
 
-  // Reusable Card Component
+  // Reusable Card
   const VenueCard = ({ venue }: { venue: any }) => (
     <div 
         onClick={() => router.push(`/venue/${venue.id}`)}
         className="bg-white rounded-3xl overflow-hidden shadow-sm border border-slate-100 active:scale-95 transition-transform cursor-pointer group h-full flex flex-col"
     >
         <div className="h-48 overflow-hidden relative">
-            <img 
-                src={venue.image_url} 
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
-                alt={venue.name}
-            />
+            <img src={venue.image_url} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
             <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-md px-2 py-1 rounded-full text-xs font-bold flex items-center gap-1 shadow-sm">
-                <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" /> {venue.rating || 'New'}
+                <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" /> {venue.rating}
             </div>
             <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-white uppercase tracking-wider">
                 {venue.type}
             </div>
         </div>
-        <div className="p-5 flex flex-col flex-1">
+        <div className="p-5">
             <h3 className="font-bold text-lg text-slate-900">{venue.name}</h3>
             <div className="flex items-center gap-1 text-slate-500 text-sm mt-1">
                 <MapPin className="w-3 h-3" /> {venue.location}
             </div>
-            <p className="text-slate-500 text-sm mt-3 line-clamp-2 flex-1">{venue.description}</p>
-            
             <div className="mt-4 pt-4 border-t border-slate-50 flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-400">For {pax} Guests</span>
                 <span className="text-xs font-bold text-blue-600">View Tables &rarr;</span>
@@ -86,9 +83,7 @@ function ExploreContent() {
                 <ArrowLeft className="text-slate-900"/>
             </Button>
             <div>
-                <h1 className="text-lg font-black capitalize text-slate-900 leading-none">
-                    {vibe === 'All' ? 'Discover' : vibe}
-                </h1>
+                <h1 className="text-lg font-black capitalize text-slate-900 leading-none">{vibe === 'All' ? 'Discover' : vibe}</h1>
                 <p className="text-xs text-slate-500 mt-1">Showing best matches</p>
             </div>
         </div>
@@ -98,34 +93,58 @@ function ExploreContent() {
       </div>
 
       <div className="p-4 space-y-8">
-        
         {loading ? (
             <div className="flex justify-center py-20"><Loader2 className="animate-spin text-blue-600"/></div>
+        ) : errorMsg ? (
+             <div className="p-6 bg-red-50 text-red-600 rounded-xl border border-red-200 text-center">
+                 <p className="font-bold">Database Error:</p>
+                 <p className="text-sm">{errorMsg}</p>
+             </div>
         ) : (
             <>
-                {/* SECTION 1: MATCHES */}
-                {venues.length > 0 ? (
-                    <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                        {venues.map(v => <VenueCard key={v.id} venue={v} />)}
-                    </div>
-                ) : (
-                    <div className="text-center py-10 bg-white rounded-3xl border border-dashed border-slate-200">
-                        <p className="text-slate-400 font-medium">No specific "{vibe}" spots found nearby.</p>
-                        <p className="text-sm text-blue-600 font-bold mt-1">Check out these popular places instead 👇</p>
-                    </div>
-                )}
-
-                {/* SECTION 2: DISCOVER MORE (Broad Categories) */}
-                {otherVenues.length > 0 && (
-                    <div className="pt-4 border-t border-slate-200">
+                {/* 1. EVENTS ROW */}
+                {events.length > 0 && (
+                    <div>
                         <h2 className="text-xl font-black text-slate-900 mb-4 flex items-center gap-2">
-                            <Heart className="w-5 h-5 text-red-500 fill-red-500" /> More to Explore
+                            <Ticket className="w-5 h-5 text-purple-600" /> Happening Soon
                         </h2>
-                        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                            {otherVenues.map(v => <VenueCard key={v.id} venue={v} />)}
+                        <div className="flex gap-4 overflow-x-auto pb-4 snap-x no-scrollbar">
+                            {events.map(ev => (
+                                <div key={ev.id} className="min-w-[280px] snap-center bg-white rounded-2xl overflow-hidden shadow-sm border border-slate-100">
+                                    <div className="h-32 relative">
+                                        <img src={ev.image_url} className="w-full h-full object-cover"/>
+                                        <div className="absolute bottom-2 left-2 bg-black/60 text-white text-xs px-2 py-1 rounded-md font-bold">
+                                            {new Date(ev.date).toLocaleDateString()}
+                                        </div>
+                                    </div>
+                                    <div className="p-4">
+                                        <h3 className="font-bold text-slate-900 truncate">{ev.title}</h3>
+                                        <p className="text-xs text-slate-500 flex items-center gap-1 mt-1">
+                                            <MapPin className="w-3 h-3"/> {ev.venue_name}
+                                        </p>
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     </div>
                 )}
+
+                {/* 2. VENUE GRID */}
+                <div>
+                     <h2 className="text-xl font-black text-slate-900 mb-4 flex items-center gap-2">
+                            <Heart className="w-5 h-5 text-red-500" /> Top Places
+                    </h2>
+                    {venues.length > 0 ? (
+                        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+                            {venues.map(v => <VenueCard key={v.id} venue={v} />)}
+                        </div>
+                    ) : (
+                        <div className="text-center py-10 bg-white rounded-3xl border border-dashed border-slate-200">
+                             <p className="text-slate-400">No specific spots for "{vibe}" yet.</p>
+                             <p className="text-sm mt-1">Try "Night Club" or "Chill Cafe"</p>
+                        </div>
+                    )}
+                </div>
             </>
         )}
       </div>

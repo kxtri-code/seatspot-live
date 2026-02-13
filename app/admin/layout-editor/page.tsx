@@ -3,286 +3,258 @@
 import { useEffect, useRef, useState } from 'react'
 import * as fabric from 'fabric' 
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { supabase } from '@/lib/supabaseClient'
-import { Loader2, Upload, Circle, Square, Trash2, Image as ImageIcon, ArrowLeft, Save } from 'lucide-react'
+import { ArrowLeft, Hand, MousePointer2, Armchair } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer"
+import { Slider } from "@/components/ui/slider"
 
-export default function MobileLayoutEditor() {
+export default function ProLayoutEditor() {
   const router = useRouter()
   const canvasEl = useRef<HTMLCanvasElement>(null)
   const [canvas, setCanvas] = useState<fabric.Canvas | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [uploading, setUploading] = useState(false)
   const [venue, setVenue] = useState<any>(null)
-  const [selectedObject, setSelectedObject] = useState<fabric.Object | null>(null)
+  const [mode, setMode] = useState<'pan' | 'edit'>('pan')
+  const [selectedSeat, setSelectedSeat] = useState<fabric.Object | null>(null)
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false)
+  
+  // Edit State
+  const [label, setLabel] = useState('')
+  const [category, setCategory] = useState('standard')
+  const [size, setSize] = useState(1)
 
-  // 1. INIT & FETCH VENUE
+  // 1. INIT
   useEffect(() => {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.push('/login'); return }
-
+      if (!session) return router.push('/login')
       const { data: v } = await supabase.from('venues').select('*').eq('owner_id', session.user.id).single()
-      if (!v) { router.push('/list-venue'); return }
-      
       setVenue(v)
-      setLoading(false)
     }
     init()
   }, [])
 
-  // 2. SETUP CANVAS
+  // 2. CANVAS SETUP
   useEffect(() => {
-    if (!canvasEl.current || loading || !venue) return
+    if (!canvasEl.current || !venue) return
 
-    // Create a large virtual canvas for zooming/panning
-    const c = new fabric.Canvas(canvasEl.current, {
+    // Cast to 'any' to allow custom properties like 'isDragging' without TS errors
+    const c: any = new fabric.Canvas(canvasEl.current, {
       height: window.innerHeight,
       width: window.innerWidth,
       backgroundColor: '#f8fafc',
-      selection: false, // Mobile friendly
+      selection: false,
     })
     setCanvas(c)
 
-    // A. Load Background (Layout)
+    // Load BG (Fixed for v6)
     const bgUrl = venue.layout_url || venue.image_url
-    if (bgUrl) loadBackground(c, bgUrl)
-
-    // B. Load Seats
-    loadSeats(c, venue.id)
-
-    // C. Selection Events
-    c.on('selection:created', (e: any) => setSelectedObject(e.selected[0]))
-    c.on('selection:cleared', () => setSelectedObject(null))
-
-    // D. Touch/Drag Panning Logic
-    let isDragging = false
-    let lastPosX = 0
-    let lastPosY = 0
-
-    c.on('mouse:down', function(opt: any) {
-      const evt = opt.e;
-      if (opt.target) return // If clicking a table, don't pan
-      
-      isDragging = true;
-      c.selection = false;
-      // Handle both Mouse and Touch events safely
-      lastPosX = evt.clientX || (evt.touches && evt.touches[0] ? evt.touches[0].clientX : 0);
-      lastPosY = evt.clientY || (evt.touches && evt.touches[0] ? evt.touches[0].clientY : 0);
-    });
-
-    c.on('mouse:move', function(opt: any) {
-      if (isDragging) {
-        const evt = opt.e;
-        
-        // FIX: Use 'c' instead of 'this'
-        const vpt = c.viewportTransform;
-        if (!vpt) return;
-
-        const currX = evt.clientX || (evt.touches && evt.touches[0] ? evt.touches[0].clientX : 0);
-        const currY = evt.clientY || (evt.touches && evt.touches[0] ? evt.touches[0].clientY : 0);
-        
-        vpt[4] += currX - lastPosX;
-        vpt[5] += currY - lastPosY;
-        
-        c.requestRenderAll(); // FIX: Use 'c' instead of 'this'
-        lastPosX = currX;
-        lastPosY = currY;
-      }
-    });
-
-    c.on('mouse:up', function() {
-      // FIX: Use 'c' instead of 'this'
-      if(c.viewportTransform) {
-         c.setViewportTransform(c.viewportTransform);
-      }
-      isDragging = false;
-      c.selection = true; // FIX: Use 'c' instead of 'this'
-    });
-
-    // Zoom on pinch/wheel
-    c.on('mouse:wheel', function(opt: any) {
-      const delta = opt.e.deltaY;
-      let zoom = c.getZoom();
-      zoom *= 0.999 ** delta;
-      if (zoom > 5) zoom = 5;
-      if (zoom < 0.5) zoom = 0.5;
-      
-      // Use fabric.Point for v6 compatibility
-      c.zoomToPoint(new fabric.Point(opt.e.offsetX, opt.e.offsetY), zoom);
-      
-      opt.e.preventDefault();
-      opt.e.stopPropagation();
-    });
-
-    return () => { c.dispose() }
-  }, [loading, venue])
-
-
-  // --- HELPERS ---
-  const loadBackground = async (c: fabric.Canvas, url: string) => {
-    try {
-        const img = await fabric.Image.fromURL(url, { crossOrigin: 'anonymous' })
-        
+    if (bgUrl) {
+      fabric.Image.fromURL(bgUrl, { crossOrigin: 'anonymous' }).then((img) => {
         img.set({ selectable: false, evented: false })
-        
-        // Scale image to fit properly if too huge
-        if(img.width! > c.width!) {
-             img.scaleToWidth(c.width!)
-        }
-        
+        if(img.width! > c.width!) img.scaleToWidth(c.width!)
         c.add(img)
-        c.sendObjectToBack(img) 
+        c.sendObjectToBack(img)
         c.requestRenderAll()
-    } catch(e) { console.error("BG Load Error", e) }
-  }
+      })
+    }
 
-  const loadSeats = async (c: fabric.Canvas, vid: string) => {
-     const { data: seats } = await supabase.from('seats').select('*').eq('venue_id', vid)
-     if(seats) seats.forEach(s => addShape(c, s.x, s.y, s.label, s.type, false))
-  }
+    // Load Seats
+    const loadSeats = async () => {
+        const { data } = await supabase.from('seats').select('*').eq('venue_id', venue.id)
+        if(data) data.forEach(s => addShape(c, s.x, s.y, s.label, s.type, s.category || 'standard'))
+    }
+    loadSeats()
 
-  // --- ACTIONS ---
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files?.length || !venue) return
-    setUploading(true)
-    try {
-        const file = e.target.files[0]
-        const ext = file.name.split('.').pop()
-        const path = `${venue.id}/blueprint-${Date.now()}.${ext}`
-        
-        const { error } = await supabase.storage.from('images').upload(path, file)
-        if(error) throw error
-        
-        const { data } = supabase.storage.from('images').getPublicUrl(path)
-        
-        // Save to DB and Reload
-        await supabase.from('venues').update({ layout_url: data.publicUrl }).eq('id', venue.id)
-        if(canvas) {
-            canvas.clear() 
-            loadBackground(canvas, data.publicUrl) 
-            loadSeats(canvas, venue.id) 
+    // --- INTERACTION LOGIC ---
+    c.on('mouse:down', (opt: any) => {
+      const evt = opt.e;
+      if (mode === 'pan') {
+        c.isDragging = true;
+        c.lastPosX = evt.clientX || evt.touches?.[0].clientX;
+        c.lastPosY = evt.clientY || evt.touches?.[0].clientY;
+      } else {
+        // Edit Mode
+        if (opt.target && opt.target.type === 'group') {
+            const obj = opt.target as any
+            setSelectedSeat(obj)
+            setLabel(obj.seatLabel)
+            setCategory(obj.seatCategory || 'standard')
+            setSize(obj.scaleX || 1)
+            setIsDrawerOpen(true)
         }
-    } catch (err:any) { alert(err.message) }
-    setUploading(false)
-  }
+      }
+    });
 
-  const addShape = (c: fabric.Canvas, left: number, top: number, label: string, type: string, setActive = true) => {
-    const fill = type === 'circle' ? '#22c55e' : '#3b82f6'
+    c.on('mouse:move', (opt: any) => {
+      if (mode === 'pan' && c.isDragging) {
+        const evt = opt.e;
+        const vpt = c.viewportTransform!;
+        vpt[4] += (evt.clientX || evt.touches?.[0].clientX) - c.lastPosX;
+        vpt[5] += (evt.clientY || evt.touches?.[0].clientY) - c.lastPosY;
+        c.requestRenderAll();
+        c.lastPosX = evt.clientX || evt.touches?.[0].clientX;
+        c.lastPosY = evt.clientY || evt.touches?.[0].clientY;
+      }
+    });
+
+    c.on('mouse:up', () => {
+      c.setViewportTransform(c.viewportTransform!);
+      c.isDragging = false;
+    });
+
+    return () => c.dispose()
+  }, [venue, mode])
+
+  // 3. HELPERS
+  const addShape = (c: fabric.Canvas, x: number, y: number, lbl: string, type: string, cat: string) => {
     let shape: any
-    
-    if (type === 'circle') shape = new fabric.Circle({ radius: 25, fill, stroke: '#fff', strokeWidth: 3 })
-    else shape = new fabric.Rect({ width: 60, height: 60, fill, stroke: '#fff', strokeWidth: 3, rx: 8 })
+    let color = '#3b82f6' // Default Blue
+    if (cat === 'vip') color = '#eab308' // Gold
+    if (cat === 'window') color = '#22c55e' // Green
+    if (cat === 'couple') color = '#ec4899' // Pink
 
-    const text = new fabric.Text(label, { fontSize: 16, fill: '#fff', fontWeight: 'bold', originX: 'center', originY: 'center' })
-    const group = new fabric.Group([shape, text], { left, top, hasControls: false, padding: 5 })
+    if (type === 'circle') shape = new fabric.Circle({ radius: 25, fill: color, stroke: 'white', strokeWidth: 2 })
+    else shape = new fabric.Rect({ width: 50, height: 50, rx: 8, fill: color, stroke: 'white', strokeWidth: 2 })
+
+    const text = new fabric.Text(lbl, { fontSize: 14, fill: 'white', fontWeight: 'bold', originX: 'center', originY: 'center' })
+    const group = new fabric.Group([shape, text], { left: x, top: y, hasControls: false, padding: 0 })
     
     // @ts-ignore
-    group.seatType = type
-    
+    group.seatLabel = lbl; group.seatType = type; group.seatCategory = cat;
+
     c.add(group)
-    if(setActive) c.setActiveObject(group)
     c.requestRenderAll()
   }
 
-  const addNew = (type: 'circle' | 'rect') => {
-      if(!canvas) return
-      // Use getCenterPoint for v6
-      const center = canvas.getCenterPoint() 
-      const label = `T-${canvas.getObjects().length}`
-      addShape(canvas, center.x, center.y, label, type)
+  const addNew = () => {
+    if(!canvas) return
+    const center = canvas.getVpCenter() // v6 method
+    addShape(canvas, center.x, center.y, `T-${canvas.getObjects().length}`, 'rect', 'standard')
   }
 
-  const doSave = async () => {
-      if(!canvas || !venue) return
-      setSaving(true)
+  const updateSelected = () => {
+      if(!selectedSeat || !canvas) return
       
-      const seats = canvas.getObjects()
-        .filter((o:any) => o.type === 'group')
-        .map((o:any, i) => ({
-            venue_id: venue.id,
-            x: o.left,
-            y: o.top,
-            label: `T-${i+1}`,
-            type: o.seatType || 'circle',
-            status: 'free',
-            price: 500
-        }))
+      // Update Props
+      // @ts-ignore
+      selectedSeat.seatLabel = label; selectedSeat.seatCategory = category;
+      
+      const group = selectedSeat as fabric.Group
+      const shape = group.getObjects()[0] as any
+      const text = group.getObjects()[1] as fabric.Text
+      
+      text.set('text', label)
+      
+      let color = '#3b82f6'
+      if (category === 'vip') color = '#eab308'
+      if (category === 'window') color = '#22c55e'
+      if (category === 'couple') color = '#ec4899'
+      shape.set('fill', color)
+
+      group.scale(size)
+      
+      canvas.requestRenderAll()
+      setIsDrawerOpen(false)
+  }
+
+  const deleteSelected = () => {
+      if(selectedSeat && canvas) {
+          canvas.remove(selectedSeat)
+          setIsDrawerOpen(false)
+      }
+  }
+
+  const saveLayout = async () => {
+      if(!canvas || !venue) return
+      const seats = canvas.getObjects().filter((o:any) => o.type === 'group').map((o:any) => ({
+          venue_id: venue.id,
+          x: o.left, y: o.top,
+          label: o.seatLabel,
+          type: o.seatType,
+          category: o.seatCategory,
+          status: 'free',
+          price: o.seatCategory === 'vip' ? 1000 : 500
+      }))
 
       await supabase.from('seats').delete().eq('venue_id', venue.id)
       await supabase.from('seats').insert(seats)
-      
-      setSaving(false)
       router.push('/dashboard')
   }
 
-  // --- RENDER ---
-  if (loading) return <div className="h-dvh flex items-center justify-center"><Loader2 className="animate-spin" /></div>
-
   return (
-    <div className="h-dvh w-screen bg-slate-50 overflow-hidden relative flex flex-col">
+    <div className="h-dvh w-screen bg-slate-50 overflow-hidden relative">
       
-      {/* 1. TOP BAR (Fixed Z-Index) */}
-      <div className="fixed top-0 left-0 right-0 h-16 bg-white shadow-sm flex items-center justify-between px-4 z-50">
-        <Button variant="ghost" size="icon" onClick={() => router.back()}>
-            <ArrowLeft className="text-slate-900"/>
-        </Button>
-        <span className="font-bold text-slate-900">Edit Floor Plan</span>
-        <Button onClick={doSave} size="sm" className="bg-slate-900 text-white font-bold rounded-full">
-            {saving ? <Loader2 className="animate-spin w-4 h-4"/> : "Save"}
-        </Button>
+      {/* TOP BAR */}
+      <div className="fixed top-0 w-full h-16 bg-white shadow-sm flex items-center justify-between px-4 z-50">
+        <Button variant="ghost" size="icon" onClick={() => router.back()}><ArrowLeft /></Button>
+        
+        {/* MODE SWITCHER */}
+        <div className="flex bg-slate-100 p-1 rounded-lg">
+            <button onClick={() => setMode('pan')} className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${mode === 'pan' ? 'bg-white shadow text-black' : 'text-slate-500'}`}>
+                <Hand className="w-4 h-4 inline mr-1"/> Pan
+            </button>
+            <button onClick={() => setMode('edit')} className={`px-4 py-1.5 rounded-md text-xs font-bold transition-all ${mode === 'edit' ? 'bg-white shadow text-black' : 'text-slate-500'}`}>
+                <MousePointer2 className="w-4 h-4 inline mr-1"/> Edit
+            </button>
+        </div>
+
+        <Button onClick={saveLayout} size="sm" className="bg-green-600 hover:bg-green-700 text-white font-bold rounded-full">Save</Button>
       </div>
 
-      {/* 2. CANVAS LAYER */}
-      <div className="flex-1 w-full relative z-0 mt-16">
-         <canvas ref={canvasEl} className="w-full h-full block" />
-         
-         {/* Helper Text if Empty */}
-         {!venue.layout_url && !uploading && canvas?.getObjects().length === 0 && (
-             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none opacity-50">
-                 <ImageIcon className="w-12 h-12 text-slate-400 mb-2"/>
-                 <p className="text-sm font-bold text-slate-500">Upload Blueprint to Start</p>
-             </div>
-         )}
-      </div>
+      {/* CANVAS */}
+      <canvas ref={canvasEl} className="block w-full h-full" />
 
-      {/* 3. FLOATING TOOLBAR (Fixed Bottom Center) */}
-      <div className="fixed bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-4 p-3 bg-slate-900/90 backdrop-blur-md rounded-full shadow-2xl z-50 ring-1 ring-white/20">
-            
-            {/* Upload Button */}
-            <div className="relative">
-                <Button size="icon" className="rounded-full w-12 h-12 bg-white text-slate-900 hover:bg-slate-200">
-                    {uploading ? <Loader2 className="animate-spin"/> : <Upload className="w-5 h-5"/>}
-                </Button>
-                <input 
-                    type="file" 
-                    onChange={handleUpload} 
-                    accept="image/*" 
-                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                    disabled={uploading}
-                />
+      {/* ADD BUTTON (Only in Edit Mode) */}
+      {mode === 'edit' && (
+          <div className="fixed bottom-10 left-1/2 -translate-x-1/2">
+              <Button onClick={addNew} className="rounded-full h-14 px-8 shadow-2xl bg-slate-900 text-white font-bold text-lg">
+                  <Armchair className="mr-2"/> Add Table
+              </Button>
+          </div>
+      )}
+
+      {/* EDIT DRAWER */}
+      <Drawer open={isDrawerOpen} onOpenChange={setIsDrawerOpen}>
+        <DrawerContent>
+            <DrawerHeader>
+                <DrawerTitle>Edit Table Details</DrawerTitle>
+            </DrawerHeader>
+            <div className="p-4 space-y-6">
+                
+                <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-500">TABLE NUMBER / NAME</label>
+                    <Input value={label} onChange={(e) => setLabel(e.target.value)} className="text-lg font-bold" />
+                </div>
+
+                <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-500">CATEGORY</label>
+                    <div className="grid grid-cols-2 gap-3">
+                        {['standard', 'vip', 'window', 'couple'].map((cat) => (
+                            <div 
+                                key={cat} 
+                                onClick={() => setCategory(cat)}
+                                className={`p-3 rounded-lg border-2 text-center uppercase text-xs font-bold cursor-pointer ${category === cat ? 'border-blue-600 bg-blue-50 text-blue-600' : 'border-slate-100'}`}
+                            >
+                                {cat}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                <div className="space-y-2">
+                    <label className="text-xs font-bold text-slate-500">SIZE SCALE: {size.toFixed(1)}x</label>
+                    <Slider value={[size]} min={0.5} max={2} step={0.1} onValueChange={(v) => setSize(v[0])} />
+                </div>
+
+                <div className="flex gap-3 pt-4">
+                    <Button onClick={deleteSelected} variant="destructive" className="flex-1 py-6 rounded-xl">Delete</Button>
+                    <Button onClick={updateSelected} className="flex-1 py-6 rounded-xl bg-green-600 hover:bg-green-700 text-white">Save Changes</Button>
+                </div>
             </div>
-
-            <div className="w-px h-6 bg-white/20"></div>
-
-            {/* Add Table */}
-            <Button onClick={() => addNew('circle')} size="icon" className="rounded-full w-12 h-12 bg-green-500 text-white hover:bg-green-600">
-                <Circle className="w-6 h-6" />
-            </Button>
-            
-            {/* Add Booth */}
-            <Button onClick={() => addNew('rect')} size="icon" className="rounded-full w-12 h-12 bg-blue-500 text-white hover:bg-blue-600">
-                <Square className="w-6 h-6" />
-            </Button>
-
-            {/* Delete (Contextual) */}
-            {selectedObject && (
-                <Button onClick={() => { canvas?.remove(selectedObject); setSelectedObject(null) }} size="icon" className="rounded-full w-12 h-12 bg-red-600 text-white animate-in zoom-in">
-                    <Trash2 className="w-5 h-5" />
-                </Button>
-            )}
-      </div>
+        </DrawerContent>
+      </Drawer>
 
     </div>
   )

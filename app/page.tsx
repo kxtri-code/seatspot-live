@@ -43,7 +43,6 @@ export default function VibeGate() {
             playsInline
             className={`w-full h-full object-cover transition-opacity duration-1000 ${videoLoaded ? 'opacity-60' : 'opacity-0'}`}
         >
-            {/* A high-quality generic party/lounge loop */}
             <source src="https://joy1.videvo.net/videvo_files/video/free/2019-11/large_watermarked/190301_1_25_11_preview.mp4" type="video/mp4" />
         </video>
         {/* Dark Overlay for readability */}

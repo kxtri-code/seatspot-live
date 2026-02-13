@@ -1,123 +1,195 @@
 "use client"
 
-import { useState, useRef } from 'react'
-import { supabase } from '@/lib/supabaseClient'
+import { useEffect, useRef, useState, useCallback } from 'react'
+import * as fabric from 'fabric' 
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Save, MousePointer2, Undo2, Image as ImageIcon } from 'lucide-react'
+import { supabase } from '@/lib/supabaseClient'
+import { Save, Plus, Trash2, Armchair, Square, Circle as CircleIcon, RotateCw, Loader2 } from 'lucide-react'
+import QuickPinchZoom, { make3dTransformValue } from "react-quick-pinch-zoom"
+import { useRouter } from 'next/navigation'
 
 export default function LayoutEditor() {
-  const [tables, setTables] = useState<any[]>([])
-  const [layoutUrl, setLayoutUrl] = useState('https://images.unsplash.com/photo-1559339352-11d035aa65de') // Default Placeholder
-  const [newLabel, setNewLabel] = useState('')
-  const containerRef = useRef<HTMLDivElement>(null)
+  const router = useRouter()
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+  const [canvas, setCanvas] = useState<fabric.Canvas | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [venueId, setVenueId] = useState<string | null>(null)
 
-  const handlePinTable = (e: React.MouseEvent) => {
-    if (!containerRef.current || !newLabel) return alert("Enter a label (e.g. T1) first!")
-    
-    const rect = containerRef.current.getBoundingClientRect()
-    const newTable = {
-      id: crypto.randomUUID(), 
-      label: newLabel,
-      x: Math.round(e.clientX - rect.left),
-      y: Math.round(e.clientY - rect.top),
-      status: 'free',
-      guest_name: null 
+  // 1. INITIALIZE CANVAS & FETCH VENUE
+  useEffect(() => {
+    if (!canvasRef.current) return
+
+    // Setup Fabric Canvas
+    const c = new fabric.Canvas(canvasRef.current, {
+      height: 600,
+      width: 800,
+      backgroundColor: '#1e293b', // Slate-800
+      selection: true
+    })
+    setCanvas(c)
+
+    // Load User's Venue
+    const fetchVenue = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+          router.push('/login')
+          return
+      }
+
+      // Find the venue owned by this user
+      const { data: venue } = await supabase
+        .from('venues')
+        .select('id')
+        .eq('owner_id', session.user.id)
+        .single()
+
+      if (venue) {
+        setVenueId(venue.id)
+        loadExistingLayout(c, venue.id)
+      } else {
+        alert("No venue found! Please register your venue first.")
+        router.push('/list-venue')
+      }
+      setLoading(false)
     }
 
-    setTables([...tables, newTable])
-    setNewLabel('') 
-  }
+    fetchVenue()
 
-  const saveToDatabase = async () => {
-    // 1. Save the seats
-    const { error: seatError } = await supabase.from('seats').insert(tables)
+    return () => { c.dispose() }
+  }, [])
+
+  // 2. LOAD EXISTING SEATS (If any)
+  const loadExistingLayout = async (c: fabric.Canvas, vId: string) => {
+    const { data: seats } = await supabase.from('seats').select('*').eq('venue_id', vId)
     
-    // 2. Save the layout URL to the venue (In a real app, you'd fetch the venue ID dynamically)
-    // await supabase.from('venues').update({ layout_url: layoutUrl }).eq('id', VENUE_ID)
-
-    if (!seatError) {
-        alert("Floor Plan & Pins Saved!")
-        setTables([])
+    if (seats && seats.length > 0) {
+        seats.forEach(seat => {
+            addShapeToCanvas(c, seat.x, seat.y, seat.label, seat.type)
+        })
     }
   }
+
+  // 3. ADD SHAPE FUNCTION
+  const addShapeToCanvas = (c: fabric.Canvas, left = 100, top = 100, label = 'T-1', type = 'circle') => {
+    let shape: any
+
+    if (type === 'circle') {
+        shape = new fabric.Circle({ radius: 20, fill: '#22c55e', stroke: '#fff', strokeWidth: 2 })
+    } else {
+        shape = new fabric.Rect({ width: 50, height: 50, fill: '#3b82f6', stroke: '#fff', strokeWidth: 2, rx: 4, ry: 4 })
+    }
+
+    const text = new fabric.Text(label, { fontSize: 14, fill: '#fff', fontWeight: 'bold', originX: 'center', originY: 'center' })
+    
+    const group = new fabric.Group([shape, text], {
+        left, top,
+        hasControls: true,
+        selectable: true
+    })
+
+    // @ts-ignore
+    group.seatType = type 
+    // @ts-ignore
+    group.seatLabel = label
+
+    c.add(group)
+    c.setActiveObject(group)
+  }
+
+  // 4. SAVE LAYOUT TO DB
+  const saveLayout = async () => {
+    if (!canvas || !venueId) return
+    setSaving(true)
+
+    const objects = canvas.getObjects()
+    const seatsToSave = objects.map((obj: any, index) => ({
+        venue_id: venueId,
+        x: obj.left,
+        y: obj.top,
+        label: `T-${index + 1}`, // Auto-number tables
+        type: obj.seatType || 'circle',
+        status: 'free',
+        price: 500
+    }))
+
+    // A. Delete old layout (Clean slate)
+    await supabase.from('seats').delete().eq('venue_id', venueId)
+
+    // B. Insert new layout
+    const { error } = await supabase.from('seats').insert(seatsToSave)
+
+    if (error) {
+        alert("Save Failed: " + error.message)
+    } else {
+        alert("Layout Saved! You can now sell tickets.")
+        router.push('/dashboard')
+    }
+    setSaving(false)
+  }
+
+  // CONTROLS
+  const addTable = () => canvas && addShapeToCanvas(canvas, 100, 100, '?', 'circle')
+  const addBooth = () => canvas && addShapeToCanvas(canvas, 150, 100, '?', 'rect')
+  
+  const deleteSelected = () => {
+    const active = canvas?.getActiveObject()
+    if (active) canvas?.remove(active)
+  }
+
+  const clearAll = () => {
+      if(confirm("Clear entire floor plan?")) canvas?.clear()
+  }
+
+  // ZOOM HANDLER
+  const onUpdate = useCallback(({ x, y, scale }: any) => {
+    if (contentRef.current) {
+      contentRef.current.style.transform = make3dTransformValue({ x, y, scale });
+    }
+  }, []);
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin" /></div>
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white p-8 pt-24">
-      <div className="max-w-5xl mx-auto space-y-6">
+    <div className="h-screen flex flex-col bg-slate-950 text-white">
+      
+      {/* TOOLBAR */}
+      <div className="h-16 border-b border-slate-800 flex items-center justify-between px-4 bg-slate-900 z-50">
+        <div className="font-bold text-lg flex items-center gap-2">
+            <Armchair className="text-blue-500"/> Layout Editor
+        </div>
         
-        {/* CONTROL BAR */}
-        <div className="bg-slate-800 p-6 rounded-[2rem] border border-white/10 space-y-4">
-            <div className="flex justify-between items-center">
-                <div>
-                    <h2 className="text-2xl font-black uppercase italic">Floor Plan Digitizer</h2>
-                    <p className="text-sm text-slate-400">Setup your venue map for guests.</p>
-                </div>
-                <Button onClick={saveToDatabase} className="bg-green-600 hover:bg-green-700 font-bold px-8">
-                    <Save className="w-4 h-4 mr-2" /> SAVE LIVE MAP
-                </Button>
-            </div>
-
-            <div className="flex gap-4 p-4 bg-black/20 rounded-xl">
-                <div className="flex-1 space-y-1">
-                    <label className="text-[10px] font-bold uppercase text-slate-400">Step 1: Floor Plan Image URL</label>
-                    <div className="flex gap-2">
-                        <Input 
-                            value={layoutUrl} 
-                            onChange={(e) => setLayoutUrl(e.target.value)} 
-                            className="bg-white/5 border-white/10 text-white text-xs" 
-                            placeholder="https://..."
-                        />
-                        <Button size="icon" variant="ghost"><ImageIcon className="w-4 h-4 text-slate-400"/></Button>
-                    </div>
-                </div>
-                <div className="w-48 space-y-1">
-                    <label className="text-[10px] font-bold uppercase text-slate-400">Step 2: Table Label</label>
-                    <div className="flex gap-2">
-                        <Input 
-                            placeholder="e.g. A1" 
-                            value={newLabel}
-                            onChange={(e) => setNewLabel(e.target.value)}
-                            className="bg-white/5 border-white/10 text-white text-xs"
-                        />
-                        <Button onClick={() => setTables(tables.slice(0, -1))} size="icon" variant="ghost"><Undo2 className="w-4 h-4 text-slate-400"/></Button>
-                    </div>
-                </div>
-            </div>
+        <div className="flex gap-2">
+            <Button onClick={addTable} variant="secondary" size="sm" className="bg-slate-800 text-green-400 hover:bg-slate-700 border border-slate-700">
+                <CircleIcon className="w-4 h-4 mr-2"/> Add Table
+            </Button>
+            <Button onClick={addBooth} variant="secondary" size="sm" className="bg-slate-800 text-blue-400 hover:bg-slate-700 border border-slate-700">
+                <Square className="w-4 h-4 mr-2"/> Add Booth
+            </Button>
+            <div className="w-px h-8 bg-slate-700 mx-2"></div>
+            <Button onClick={deleteSelected} variant="ghost" size="icon" className="text-red-400 hover:bg-red-900/20"><Trash2 className="w-5 h-5"/></Button>
+            <Button onClick={clearAll} variant="ghost" size="icon" className="text-slate-400 hover:bg-slate-800"><RotateCw className="w-5 h-5"/></Button>
         </div>
 
-        {/* THE INTERACTIVE MAP */}
-        <div 
-          ref={containerRef}
-          onClick={handlePinTable}
-          className="relative rounded-3xl overflow-hidden border-2 border-white/20 shadow-2xl cursor-crosshair bg-slate-950 mx-auto group"
-          style={{ width: '100%', height: '500px' }}
-        >
-          <img 
-            src={layoutUrl} 
-            className="w-full h-full object-contain pointer-events-none opacity-80 group-hover:opacity-100 transition-opacity" 
-            alt="Venue Floor Plan" 
-          />
-          
-          {tables.map((table, i) => (
-            <div 
-              key={i}
-              className="absolute w-8 h-8 bg-green-500 border-2 border-white rounded-full flex items-center justify-center text-[10px] font-black shadow-lg animate-in zoom-in"
-              style={{ left: table.x - 16, top: table.y - 16 }}
-            >
-              {table.label}
-            </div>
-          ))}
-
-          {tables.length === 0 && (
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <div className="bg-black/60 backdrop-blur-md px-6 py-3 rounded-full flex items-center gap-2 border border-white/10">
-                    <MousePointer2 className="w-5 h-5" /> Click anywhere on the map to pin a table
-                </div>
-            </div>
-          )}
-        </div>
+        <Button onClick={saveLayout} disabled={saving} className="bg-blue-600 hover:bg-blue-500 font-bold min-w-[120px]">
+            {saving ? <Loader2 className="animate-spin mr-2"/> : <Save className="w-4 h-4 mr-2"/>}
+            {saving ? "Saving..." : "Save Layout"}
+        </Button>
       </div>
+
+      {/* CANVAS AREA */}
+      <div className="flex-1 overflow-hidden relative bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] bg-slate-900">
+        <QuickPinchZoom onUpdate={onUpdate}>
+            <div ref={contentRef} className="origin-top-left p-10 flex items-center justify-center min-h-full">
+                <div className="shadow-2xl shadow-black border border-slate-700 relative">
+                    <canvas ref={canvasRef} />
+                    <div className="absolute top-2 left-2 text-[10px] text-slate-500 font-mono">CANVAS: 800x600</div>
+                </div>
+            </div>
+        </QuickPinchZoom>
+      </div>
+
     </div>
   )
 }

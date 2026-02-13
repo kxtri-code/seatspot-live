@@ -1,28 +1,27 @@
 "use client"
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 import { Loader2, MapPin, Star, ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
-export default function Explore() {
+// 1. THE CONTENT COMPONENT (Does the actual work)
+function ExploreContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
-  const vibe = searchParams.get('vibe')
-  const pax = searchParams.get('pax')
+  const vibe = searchParams.get('vibe') || 'All'
+  const pax = searchParams.get('pax') || '2'
   
   const [venues, setVenues] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const fetchVenues = async () => {
-      // 1. Fetch Venues matching the type (vibe)
+      // Fetch Venues matching the type (vibe)
       let query = supabase.from('venues').select('*')
       
-      if (vibe) {
-         // Assuming your DB has 'club', 'cafe', 'restaurant' in the 'type' column
-         // If you saved them as different strings, you might need to adjust this filter
+      if (vibe && vibe !== 'All') {
          query = query.ilike('type', `%${vibe}%`) 
       }
 
@@ -91,5 +90,18 @@ export default function Explore() {
         )}
       </div>
     </div>
+  )
+}
+
+// 2. THE MAIN PAGE COMPONENT (The Fix for the Build Error)
+export default function Explore() {
+  return (
+    <Suspense fallback={
+        <div className="h-screen w-screen flex items-center justify-center bg-slate-50">
+            <Loader2 className="animate-spin text-blue-600 w-10 h-10"/>
+        </div>
+    }>
+      <ExploreContent />
+    </Suspense>
   )
 }

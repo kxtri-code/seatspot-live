@@ -16,7 +16,6 @@ function ExploreContent() {
   const [loading, setLoading] = useState(true)
   const isFetching = useRef(false)
 
-  // HELPER: Get Icon based on vibe
   const getVibeIcon = () => {
     if (vibe.toLowerCase().includes('cafe')) return <Coffee className="w-6 h-6 text-slate-400" />
     if (vibe.toLowerCase().includes('club')) return <Music className="w-6 h-6 text-slate-400" />
@@ -68,7 +67,8 @@ function ExploreContent() {
 
   const VenueCard = ({ venue }: { venue: any }) => (
     <div 
-      onClick={() => router.push(`/venue/${venue.id}`)}
+      // --- FIX 1: Point to plural 'venues' folder ---
+      onClick={() => router.push(`/venues/${venue.id}`)}
       className="bg-white rounded-[2rem] overflow-hidden shadow-sm border border-slate-100 active:scale-95 transition-all cursor-pointer mb-6 group"
     >
       <div className="h-56 relative overflow-hidden">
@@ -130,7 +130,12 @@ function ExploreContent() {
                 </h2>
                 <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar snap-x px-1">
                   {events.map(ev => (
-                    <div key={ev.id} className="min-w-[260px] snap-center bg-white rounded-[1.5rem] overflow-hidden shadow-sm border border-slate-100">
+                    <div 
+                        key={ev.id} 
+                        // --- FIX 2: Added Click Handler to Events ---
+                        onClick={() => router.push(`/venues/${ev.venue_id}`)}
+                        className="min-w-[260px] snap-center bg-white rounded-[1.5rem] overflow-hidden shadow-sm border border-slate-100 cursor-pointer active:scale-95 transition-transform"
+                    >
                       <div className="h-28 relative">
                         <img src={ev.image_url} className="w-full h-full object-cover" alt={ev.title}/>
                         <div className="absolute bottom-2 left-2 bg-black/60 backdrop-blur-sm px-2 py-1 rounded-lg text-white text-[10px] font-bold">

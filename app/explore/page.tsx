@@ -3,7 +3,7 @@
 import { useEffect, useState, Suspense, useRef } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
-import { Loader2, MapPin, Star, ArrowLeft, Compass, Heart, Ticket, Coffee, Music, Utensils } from 'lucide-react'
+import { Loader2, MapPin, Star, ArrowLeft, Compass, Heart, Ticket, Coffee, Music, Utensils, Map as MapIcon, List, Flame } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 function ExploreContent() {
@@ -14,6 +14,7 @@ function ExploreContent() {
   const [venues, setVenues] = useState<any[]>([])
   const [events, setEvents] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [showMap, setShowMap] = useState(false) // Toggle State
   const isFetching = useRef(false)
 
   const getVibeIcon = () => {
@@ -26,22 +27,15 @@ function ExploreContent() {
   useEffect(() => {
     const loadSystemData = async (retryCount = 0) => {
       if (isFetching.current && retryCount === 0) return;
-      
       isFetching.current = true;
       setLoading(true);
       
       try {
-        const { data, error } = await supabase
-          .from('venues')
-          .select('*')
-          .order('created_at', { ascending: false });
-
+        const { data, error } = await supabase.from('venues').select('*').order('created_at', { ascending: false });
         if (error) throw error;
 
         if (data) {
-          const filtered = data.filter(v => 
-            vibe === 'All' || v.type?.toLowerCase().trim() === vibe.toLowerCase().trim()
-          );
+          const filtered = data.filter(v => vibe === 'All' || v.type?.toLowerCase().trim() === vibe.toLowerCase().trim());
           setVenues(filtered.length > 0 ? filtered : data);
         }
 
@@ -55,26 +49,24 @@ function ExploreContent() {
         if ((err.name === 'AbortError' || err.message?.includes('aborted')) && retryCount < 3) {
           setTimeout(() => loadSystemData(retryCount + 1), 500);
         } else {
-          console.error("Connection Error:", err);
           setLoading(false);
           isFetching.current = false;
         }
       }
     };
-
     loadSystemData();
   }, [vibe]);
 
   const VenueCard = ({ venue }: { venue: any }) => (
     <div 
-      // --- FIX 1: Point to plural 'venues' folder ---
       onClick={() => router.push(`/venues/${venue.id}`)}
       className="bg-white rounded-[2rem] overflow-hidden shadow-sm border border-slate-100 active:scale-95 transition-all cursor-pointer mb-6 group"
     >
       <div className="h-56 relative overflow-hidden">
         <img src={venue.image_url} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={venue.name} />
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-60" />
-        <div className="absolute top-4 right-4 bg-white/20 backdrop-blur-md border border-white/20 px-3 py-1 rounded-full text-white text-[10px] font-black uppercase tracking-widest shadow-lg">
+        <div className="absolute top-4 right-4 bg-white/20 backdrop-blur-md border border-white/20 px-3 py-1 rounded-full text-white text-[10px] font-black uppercase tracking-widest shadow-lg flex items-center gap-1">
+          {venue.type === 'club' && <Flame className="w-3 h-3 text-orange-400 fill-orange-400" />}
           {venue.type}
         </div>
       </div>
@@ -82,7 +74,10 @@ function ExploreContent() {
         <div className="flex justify-between items-start">
           <div>
               <h3 className="font-black text-xl text-slate-900 leading-tight">{venue.name}</h3>
-              <p className="text-slate-400 text-xs font-bold uppercase tracking-wider mt-1">{venue.type} • {venue.rating || '4.8'} Stars</p>
+              <div className="flex items-center gap-1 mt-1">
+                  <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
+                  <span className="text-xs font-bold text-slate-600">{venue.rating || '4.8'}</span>
+              </div>
           </div>
           <div className="bg-slate-50 p-2 rounded-full border border-slate-100">
              <ArrowLeft className="w-4 h-4 text-slate-900 rotate-180" />
@@ -101,17 +96,32 @@ function ExploreContent() {
       <div className="bg-white/80 backdrop-blur-md px-4 py-4 sticky top-0 z-50 border-b border-slate-100/50">
         <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => router.back()} className="rounded-full hover:bg-slate-100">
-                <ArrowLeft className="text-slate-900"/>
-            </Button>
-            <div>
-                <h1 className="text-lg font-black text-slate-900 capitalize leading-none">{vibe}</h1>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
-                {loading ? 'Updating...' : `${venues.length} results`}
-                </p>
+                <Button variant="ghost" size="icon" onClick={() => router.back()} className="rounded-full hover:bg-slate-100">
+                    <ArrowLeft className="text-slate-900"/>
+                </Button>
+                <div>
+                    <h1 className="text-lg font-black text-slate-900 capitalize leading-none">{vibe}</h1>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">
+                    {loading ? 'Updating...' : `${venues.length} results`}
+                    </p>
+                </div>
             </div>
+            
+            {/* MAP TOGGLE SWITCH */}
+            <div className="flex items-center bg-slate-100 rounded-full p-1 border border-slate-200">
+                <button 
+                    onClick={() => setShowMap(false)}
+                    className={`p-2 rounded-full transition-all ${!showMap ? 'bg-white shadow-sm text-slate-900' : 'text-slate-400'}`}
+                >
+                    <List className="w-4 h-4" />
+                </button>
+                <button 
+                    onClick={() => setShowMap(true)}
+                    className={`p-2 rounded-full transition-all ${showMap ? 'bg-white shadow-sm text-slate-900' : 'text-slate-400'}`}
+                >
+                    <MapIcon className="w-4 h-4" />
+                </button>
             </div>
-            {getVibeIcon()}
         </div>
       </div>
 
@@ -120,6 +130,26 @@ function ExploreContent() {
           <div className="flex flex-col items-center justify-center py-32 gap-4 opacity-50">
             <Loader2 className="animate-spin text-slate-900 w-8 h-8"/>
           </div>
+        ) : showMap ? (
+            // --- MAP VIEW PLACEHOLDER ---
+            <div className="h-[70vh] w-full bg-slate-200 rounded-[2.5rem] relative overflow-hidden flex flex-col items-center justify-center text-slate-400 border border-slate-300">
+                <div className="absolute inset-0 bg-[url('https://api.mapbox.com/styles/v1/mapbox/streets-v11/static/93.725,25.906,13,0/600x600?access_token=YOUR_TOKEN')] bg-cover opacity-20 grayscale" />
+                <MapPin className="w-12 h-12 text-slate-300 mb-2" />
+                <p className="font-bold text-sm">Interactive Map Coming Soon</p>
+                <p className="text-[10px] uppercase tracking-widest mt-1">Dimapur Area</p>
+                
+                {/* Floating "Vibe" Pins (Visual Demo) */}
+                <div className="absolute top-1/4 left-1/3 animate-bounce">
+                    <div className="bg-white p-2 rounded-full shadow-lg">
+                        <Flame className="w-5 h-5 text-orange-500 fill-orange-500" />
+                    </div>
+                </div>
+                <div className="absolute bottom-1/3 right-1/4 animate-bounce delay-100">
+                    <div className="bg-white p-2 rounded-full shadow-lg">
+                        <Coffee className="w-5 h-5 text-brown-500" />
+                    </div>
+                </div>
+            </div>
         ) : (
           <>
             {/* EVENTS */}
@@ -132,7 +162,6 @@ function ExploreContent() {
                   {events.map(ev => (
                     <div 
                         key={ev.id} 
-                        // --- FIX 2: Added Click Handler to Events ---
                         onClick={() => router.push(`/venues/${ev.venue_id}`)}
                         className="min-w-[260px] snap-center bg-white rounded-[1.5rem] overflow-hidden shadow-sm border border-slate-100 cursor-pointer active:scale-95 transition-transform"
                     >

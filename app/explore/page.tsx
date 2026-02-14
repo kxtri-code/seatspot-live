@@ -6,11 +6,18 @@ import { supabase } from '@/lib/supabaseClient'
 import { Loader2, MapPin, Star, ArrowLeft, Compass, Heart, Ticket, Flame, Zap, Coffee, Music, Utensils } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
+// --- MOCK STORIES DATA ---
+const STORIES = [
+    { id: 1, name: 'The Box', img: 'https://images.unsplash.com/photo-1574096079513-d82599697559?w=400&h=400&fit=crop', hasUpdate: true },
+    { id: 2, name: 'SkyDeck', img: 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=400&h=400&fit=crop', hasUpdate: true },
+    { id: 3, name: 'Bambusa', img: 'https://images.unsplash.com/photo-1559339352-11d035aa65de?w=400&h=400&fit=crop', hasUpdate: false },
+    { id: 4, name: 'Playground', img: 'https://images.unsplash.com/photo-1566737236500-c8ac43014a67?w=400&h=400&fit=crop', hasUpdate: false },
+]
+
 function ExploreContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   
-  // GET PARAMS
   const vibe = searchParams.get('vibe') || 'All'
   const guests = searchParams.get('guests') || '2'
   
@@ -43,18 +50,14 @@ function ExploreContent() {
         if (data) {
           setVenues(data);
           
-          // 1. YOUR MATCHES (Strict Filter)
           const strictMatches = data.filter(v => 
             vibe === 'All' || v.type?.toLowerCase().includes(vibe.toLowerCase())
           );
-          setMatches(strictMatches.length > 0 ? strictMatches : data.slice(0, 3)); // Fallback if no match
+          setMatches(strictMatches.length > 0 ? strictMatches : data.slice(0, 3)); 
 
-          // 2. TRENDING / MOST VIBING (Simulated by ID hash or random for now)
-          // In a real app, this would be a DB column 'current_vibe_score'
           const sortedByVibe = [...data].sort(() => 0.5 - Math.random());
           setTrending(sortedByVibe.slice(0, 4));
 
-          // 3. TOP PICKS (High Rating)
           const highRated = data.filter(v => (v.rating || 0) >= 4.5);
           setTopPicks(highRated);
         }
@@ -86,12 +89,10 @@ function ExploreContent() {
         <img src={venue.image_url} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={venue.name} />
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-60" />
         
-        {/* TYPE BADGE */}
         <div className="absolute top-3 left-3 bg-white/20 backdrop-blur-md border border-white/20 px-2 py-1 rounded-lg text-white text-[10px] font-black uppercase tracking-widest shadow-lg flex items-center gap-1">
           {getVibeIcon(venue.type)} {venue.type}
         </div>
 
-        {/* OPTIONAL TAG (e.g. "98% Match") */}
         {tag && (
             <div className={`absolute bottom-3 right-3 ${color || 'bg-blue-600'} px-2 py-1 rounded-lg text-white text-[10px] font-bold shadow-lg flex items-center gap-1`}>
                 <Zap className="w-3 h-3 fill-current" /> {tag}
@@ -117,8 +118,8 @@ function ExploreContent() {
   return (
     <div className="min-h-screen bg-slate-50 pb-20 font-sans">
       
-      {/* HEADER */}
-      <div className="bg-white/80 backdrop-blur-md px-4 py-4 sticky top-0 z-50 border-b border-slate-100/50 flex items-center justify-between">
+      {/* HEADER (Sticky) */}
+      <div className="bg-white/80 backdrop-blur-md px-4 py-4 sticky top-16 z-30 border-b border-slate-100/50 flex items-center justify-between">
             <div className="flex items-center gap-3">
                 <Button variant="ghost" size="icon" onClick={() => router.push('/')} className="rounded-full hover:bg-slate-100">
                     <ArrowLeft className="text-slate-900"/>
@@ -135,15 +136,40 @@ function ExploreContent() {
             </div>
       </div>
 
-      <div className="p-4 space-y-10">
-        {loading ? (
+      <div className="p-4 space-y-8">
+        
+        {/* NEW: LIVE STORIES SECTION */}
+        <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar px-1">
+            {/* My Story (Add) */}
+            <div className="flex flex-col items-center gap-1 shrink-0">
+                <div className="w-16 h-16 rounded-full bg-slate-100 border-2 border-slate-200 flex items-center justify-center relative active:scale-95 transition-transform cursor-pointer">
+                    <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center absolute bottom-0 right-0 border-2 border-white text-white font-bold">+</div>
+                </div>
+                <span className="text-[10px] font-bold text-slate-400">My Story</span>
+            </div>
+
+            {/* Venue Stories */}
+            {STORIES.map(story => (
+                <div key={story.id} className="flex flex-col items-center gap-1 shrink-0 cursor-pointer active:scale-95 transition-transform">
+                    <div className={`w-16 h-16 rounded-full p-[2px] ${story.hasUpdate ? 'bg-gradient-to-tr from-blue-500 to-purple-500' : 'bg-slate-200'}`}>
+                        <div className="w-full h-full rounded-full border-2 border-white overflow-hidden">
+                            <img src={story.img} className="w-full h-full object-cover" />
+                        </div>
+                    </div>
+                    <span className="text-[10px] font-bold text-slate-600">{story.name}</span>
+                </div>
+            ))}
+        </div>
+
+        {/* LOADING STATE */}
+        {loading && venues.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-32 gap-4 opacity-50">
             <Loader2 className="animate-spin text-slate-900 w-8 h-8"/>
             <p className="text-xs font-bold uppercase tracking-widest text-slate-400">Curating your night...</p>
           </div>
         ) : (
           <>
-            {/* SECTION 1: YOUR MATCHES */}
+            {/* Matches Section */}
             <div className="space-y-4">
               <div className="flex items-center justify-between px-1">
                   <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
@@ -156,7 +182,7 @@ function ExploreContent() {
               </div>
             </div>
 
-            {/* SECTION 2: MOST VIBING (Trending) */}
+            {/* Trending Section */}
             <div className="space-y-4">
               <h2 className="text-xl font-black text-slate-900 flex items-center gap-2 px-1">
                 <Flame className="w-5 h-5 text-orange-500 fill-orange-500" /> Most Vibing
@@ -166,7 +192,7 @@ function ExploreContent() {
               </div>
             </div>
 
-            {/* SECTION 3: EVENTS */}
+            {/* Events Section */}
             {events.length > 0 && (
               <div className="space-y-4">
                 <h2 className="text-xl font-black text-slate-900 flex items-center gap-2 px-1">
@@ -198,7 +224,7 @@ function ExploreContent() {
               </div>
             )}
 
-            {/* SECTION 4: TOP PICKS / ALL VENUES */}
+            {/* Top Picks Section */}
             <div className="space-y-4">
               <div className="flex items-center justify-between px-1">
                   <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
@@ -211,7 +237,6 @@ function ExploreContent() {
               </div>
             </div>
 
-            {/* BOTTOM CTA */}
             <div className="pt-8 pb-10 text-center">
                 <p className="text-slate-400 text-sm font-medium mb-4">Didn't find what you're looking for?</p>
                 <Button variant="outline" className="rounded-full px-8 border-slate-300 text-slate-600 font-bold" onClick={() => setVenues(venues)}>

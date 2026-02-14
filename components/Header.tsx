@@ -7,7 +7,7 @@ export default function Header() {
   const router = useRouter()
   const pathname = usePathname()
 
-  // --- THE FIX: HIDE HEADER ON HOME PAGE ---
+  // STRICT CHECK: If on Home Page, render NOTHING.
   if (pathname === '/') return null
 
   return (
@@ -28,7 +28,7 @@ export default function Header() {
         <button onClick={() => router.push('/tickets')} className="text-sm font-bold text-slate-500 hover:text-slate-900 transition-colors">Wallet</button>
       </nav>
 
-      {/* PROFILE AVATAR */}
+      {/* PROFILE AVATAR (Top Right) */}
       <div className="flex items-center gap-4">
         <UserAvatar className="w-9 h-9" />
       </div>

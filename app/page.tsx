@@ -48,9 +48,7 @@ export default function LandingPage() {
         const { data } = await supabase.from('cms_assets').select('*')
         if (data && data.length > 0) {
             const newAssets = { ...DEFAULT_ASSETS }
-            // Map DB rows to our asset structure
             data.forEach(item => {
-                // Example mapping - extend this logic as you add more CMS fields
                 if (item.id === 'home_club_img') newAssets.club.image = item.content
                 if (item.id === 'home_club_txt') newAssets.club.headline = item.content
                 if (item.id === 'home_cafe_img') newAssets.cafe.image = item.content
@@ -141,7 +139,10 @@ export default function LandingPage() {
       
       {/* --- TRANSPARENT HOME HEADER --- */}
       <div className="fixed top-0 left-0 w-full p-6 flex justify-between items-center z-50 pointer-events-none">
-          {/* Logo - pointer-events-auto so it's clickable */}
+          {/* Header Gradient for Visibility */}
+          <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-black/80 to-transparent -z-10 pointer-events-none" />
+
+          {/* Logo */}
           <div className="flex items-center gap-2 pointer-events-auto">
             <div className="w-8 h-8 bg-white rounded-xl flex items-center justify-center shadow-lg">
                 <div className="w-4 h-4 bg-black rounded-full" />
@@ -149,7 +150,7 @@ export default function LandingPage() {
             <span className="text-white font-black text-xl tracking-tighter drop-shadow-lg">SeatSpot.</span>
           </div>
           
-          {/* NEW AVATAR COMPONENT - pointer-events-auto to click */}
+          {/* Avatar */}
           <div className="pointer-events-auto">
              <UserAvatar className="w-10 h-10 border-2 border-white/20" />
           </div>

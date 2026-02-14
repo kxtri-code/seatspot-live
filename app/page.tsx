@@ -1,115 +1,139 @@
 "use client"
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { ArrowRight, Users, Music, Coffee, Utensils, Martini } from 'lucide-react'
+import { ArrowRight, Minus, Plus, Users } from 'lucide-react'
+
+// --- 1. ASSETS CONFIGURATION (High-Quality Video Loops) ---
+const VIBE_ASSETS = {
+  club: {
+    video: "https://assets.mixkit.co/videos/preview/mixkit-crowd-dancing-at-a-concert-with-hands-up-42589-large.mp4",
+    headline: "Own the Night.",
+    sub: "VIP Tables & Guestlists."
+  },
+  cafe: {
+    video: "https://assets.mixkit.co/videos/preview/mixkit-coffee-pouring-in-slow-motion-4284-large.mp4",
+    headline: "Morning Brew.",
+    sub: "Workspaces & Chill Spots."
+  },
+  dining: {
+    video: "https://assets.mixkit.co/videos/preview/mixkit-friends-clinking-wine-glasses-at-a-dinner-party-4648-large.mp4",
+    headline: "Fine Tastes.",
+    sub: "Dates & Family Dinners."
+  },
+  lounge: {
+    video: "https://assets.mixkit.co/videos/preview/mixkit-young-people-having-drinks-at-a-bar-4279-large.mp4",
+    headline: "Just Vibe.",
+    sub: "Cocktails & Conversations."
+  }
+}
+
+type VibeType = keyof typeof VIBE_ASSETS;
 
 export default function LandingPage() {
   const router = useRouter()
   const [guestCount, setGuestCount] = useState(2)
-  const [selectedVibe, setSelectedVibe] = useState('club')
+  const [selectedVibe, setSelectedVibe] = useState<VibeType>('club')
   const [isVideoLoaded, setIsVideoLoaded] = useState(false)
+  const videoRef = useRef<HTMLVideoElement>(null)
 
-  // Vibe Options Configuration
-  const vibes = [
-    { id: 'club', label: 'Club', icon: <Music className="w-5 h-5"/>, desc: 'Party & Dance' },
-    { id: 'cafe', label: 'Cafe', icon: <Coffee className="w-5 h-5"/>, desc: 'Chill & Work' },
-    { id: 'dining', label: 'Dining', icon: <Utensils className="w-5 h-5"/>, desc: 'Food & Drinks' },
-    { id: 'lounge', label: 'Lounge', icon: <Martini className="w-5 h-5"/>, desc: 'Relax & Vibe' },
-  ]
+  // Smart Preloading: Reset opacity when vibe changes to create fade effect
+  useEffect(() => {
+    setIsVideoLoaded(false)
+    if(videoRef.current) {
+        videoRef.current.load()
+    }
+  }, [selectedVibe])
 
   const handleSearch = () => {
     router.push(`/explore?vibe=${selectedVibe}&guests=${guestCount}`)
   }
 
   return (
-    <div className="min-h-screen bg-black font-sans relative overflow-hidden flex flex-col justify-end pb-10">
+    <div className="h-screen w-full bg-black font-sans relative overflow-hidden flex flex-col justify-end">
       
-      {/* BACKGROUND VIDEO */}
+      {/* --- 2. DYNAMIC CINEMATIC BACKGROUND --- */}
       <div className="absolute inset-0 z-0">
-         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-black/20 z-10" />
+         {/* Gradient Overlay for Text Readability */}
+         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-black/40 z-20 duration-500" />
+         
          <video 
+            ref={videoRef}
             autoPlay 
             loop 
             muted 
             playsInline
+            key={selectedVibe} // Forces React to re-mount video element on change for instant swap
             onLoadedData={() => setIsVideoLoaded(true)}
-            className={`w-full h-full object-cover transition-opacity duration-1000 ${isVideoLoaded ? 'opacity-100' : 'opacity-0'}`}
+            className={`w-full h-full object-cover transition-opacity duration-1000 transform scale-105 ${isVideoLoaded ? 'opacity-100' : 'opacity-0'}`}
          >
-             {/* A high-quality, royalty-free nightlife/dining loop */}
-             <source src="https://assets.mixkit.co/videos/preview/mixkit-friends-with-colored-lights-having-fun-at-a-party-41398-large.mp4" type="video/mp4" />
+             <source src={VIBE_ASSETS[selectedVibe].video} type="video/mp4" />
          </video>
       </div>
 
-      {/* CONTENT LAYER */}
-      <div className="relative z-20 px-6 w-full max-w-md mx-auto">
+      {/* --- 3. FLOATING UI LAYER --- */}
+      <div className="relative z-30 w-full max-w-md mx-auto px-6 pb-12 flex flex-col gap-8">
           
-          {/* HEADER */}
-          <div className="mb-8 animate-in slide-in-from-bottom-8 duration-700">
-              <h1 className="text-5xl font-black text-white leading-none mb-2 tracking-tighter">
-                  What's <br/>
-                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">
-                      Your Vibe?
-                  </span>
+          {/* DYNAMIC TEXT */}
+          <div className="space-y-2 animate-in slide-in-from-bottom-8 duration-700">
+              <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-md px-3 py-1 rounded-full border border-white/10 mb-2">
+                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                  <span className="text-[10px] font-bold text-white uppercase tracking-widest">Dimapur Live</span>
+              </div>
+              <h1 className="text-6xl font-black text-white leading-none tracking-tighter drop-shadow-2xl">
+                  {VIBE_ASSETS[selectedVibe].headline}
               </h1>
-              <p className="text-slate-300 text-lg font-medium">Tonight belongs to you.</p>
+              <p className="text-white/80 text-lg font-medium tracking-wide">
+                  {VIBE_ASSETS[selectedVibe].sub}
+              </p>
           </div>
 
-          {/* INTERACTIVE SELECTOR CARD */}
-          <div className="bg-white/10 backdrop-blur-xl border border-white/20 p-6 rounded-[2.5rem] shadow-2xl animate-in slide-in-from-bottom-4 duration-700 delay-100">
+          {/* THE "ISLAND" CONTROLLER */}
+          <div className="bg-black/60 backdrop-blur-xl border border-white/10 p-2 rounded-[2.5rem] shadow-2xl animate-in slide-in-from-bottom-4 duration-700 delay-100">
               
-              {/* 1. VIBE SELECTOR */}
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">Choose Mood</label>
-              <div className="grid grid-cols-4 gap-2 mb-6">
-                  {vibes.map((v) => (
+              {/* Vibe Tabs */}
+              <div className="flex justify-between items-center p-1 bg-white/5 rounded-[2rem] mb-2 relative">
+                  {(Object.keys(VIBE_ASSETS) as Array<VibeType>).map((vibe) => (
                       <button 
-                        key={v.id}
-                        onClick={() => setSelectedVibe(v.id)}
-                        className={`flex flex-col items-center justify-center py-3 rounded-2xl transition-all active:scale-95 ${selectedVibe === v.id ? 'bg-white text-black shadow-lg scale-105' : 'bg-black/40 text-white/70 hover:bg-black/60'}`}
+                        key={vibe}
+                        onClick={() => setSelectedVibe(vibe)}
+                        className={`flex-1 py-4 rounded-[1.8rem] text-[10px] font-bold uppercase tracking-widest transition-all duration-300 ${selectedVibe === vibe ? 'bg-white text-black shadow-lg scale-105' : 'text-white/50 hover:text-white'}`}
                       >
-                          {v.icon}
-                          <span className="text-[10px] font-bold mt-1">{v.label}</span>
+                          {vibe}
                       </button>
                   ))}
               </div>
 
-              {/* 2. GUEST COUNTER */}
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">Party Size</label>
-              <div className="flex items-center justify-between bg-black/40 rounded-2xl p-2 mb-6 border border-white/5">
-                  <button 
-                    onClick={() => setGuestCount(Math.max(1, guestCount - 1))}
-                    className="w-10 h-10 rounded-xl bg-white/10 text-white flex items-center justify-center hover:bg-white/20 transition-colors"
-                  >
-                      -
-                  </button>
-                  <div className="flex flex-col items-center">
-                      <span className="text-xl font-black text-white">{guestCount}</span>
-                      <span className="text-[8px] text-slate-400 uppercase font-bold tracking-widest">People</span>
+              {/* Action Bar */}
+              <div className="flex gap-2 p-1">
+                  {/* Guest Counter */}
+                  <div className="flex items-center gap-3 bg-white/5 rounded-[1.8rem] px-6 w-1/3 justify-between border border-white/5">
+                      <button onClick={() => setGuestCount(Math.max(1, guestCount - 1))} className="text-white/50 hover:text-white active:scale-90 transition-transform"><Minus className="w-5 h-5"/></button>
+                      <span className="text-white font-black text-lg">{guestCount}</span>
+                      <button onClick={() => setGuestCount(Math.min(10, guestCount + 1))} className="text-white/50 hover:text-white active:scale-90 transition-transform"><Plus className="w-5 h-5"/></button>
                   </div>
-                  <button 
-                    onClick={() => setGuestCount(Math.min(20, guestCount + 1))}
-                    className="w-10 h-10 rounded-xl bg-white text-black flex items-center justify-center hover:bg-white/90 transition-colors"
-                  >
-                      +
-                  </button>
-              </div>
 
-              {/* 3. GO BUTTON */}
-              <Button 
-                onClick={handleSearch}
-                className="w-full h-14 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-black text-lg rounded-2xl shadow-lg shadow-purple-900/50 transition-all active:scale-95"
-              >
-                  Find Places <ArrowRight className="ml-2 w-5 h-5" />
-              </Button>
+                  {/* The "Let's Go" Button */}
+                  <Button 
+                    onClick={handleSearch}
+                    className="flex-1 h-16 bg-white text-black font-black text-lg rounded-[1.8rem] hover:bg-slate-200 transition-all active:scale-95 group shadow-[0_0_20px_rgba(255,255,255,0.3)]"
+                  >
+                      Let's Go 
+                      <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center ml-3 group-hover:rotate-45 transition-transform duration-300">
+                          <ArrowRight className="w-4 h-4 text-white" />
+                      </div>
+                  </Button>
+              </div>
           </div>
 
       </div>
 
-      {/* BOTTOM NAV (Transparent) */}
-      <div className="fixed top-0 right-0 p-4 z-50">
-          <Button variant="ghost" onClick={() => router.push('/profile')} className="text-white/80 hover:text-white hover:bg-white/10 rounded-full">
-              <span className="text-xs font-bold uppercase tracking-widest mr-2">Login</span> <Users className="w-5 h-5" />
+      {/* --- 4. TOP NAV (Minimalist) --- */}
+      <div className="fixed top-0 left-0 w-full p-6 flex justify-between items-center z-50 mix-blend-difference">
+          <span className="text-white font-black text-xl tracking-tighter">SeatSpot.</span>
+          <Button variant="ghost" onClick={() => router.push('/profile')} className="text-white hover:bg-white/20 rounded-full font-bold uppercase text-xs tracking-widest border border-white/20 px-4 h-10">
+              <Users className="w-4 h-4 mr-2" /> My ID
           </Button>
       </div>
 

@@ -1,157 +1,89 @@
 "use client"
 
-import { useEffect, useState, useRef } from 'react'
-import * as fabric from 'fabric' 
+import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
-import { Button } from '@/components/ui/button'
-import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter } from "@/components/ui/drawer"
-import { Loader2, CheckCircle, CreditCard } from 'lucide-react'
-import { useRouter } from 'next/navigation'
+import { Loader2 } from 'lucide-react'
 
-export default function SeatMap({ venueId }: { venueId: string }) {
-  const router = useRouter()
-  const canvasEl = useRef<HTMLCanvasElement>(null)
-  const [canvas, setCanvas] = useState<fabric.Canvas | null>(null)
-  const [selectedSeat, setSelectedSeat] = useState<any>(null)
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false)
-  const [booking, setBooking] = useState(false)
+export default function SeatMap({ venueId, onSeatSelect }: { venueId: string, onSeatSelect: (seat: any) => void }) {
+  const [seats, setSeats] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [selectedSeatId, setSelectedSeatId] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!canvasEl.current) return
-
-    // Initialize Canvas
-    // Cast as 'any' to bypass strict TS checks for this specific implementation
-    const c: any = new fabric.Canvas(canvasEl.current, {
-      height: 400,
-      width: window.innerWidth < 600 ? window.innerWidth - 40 : 600, // Responsive width
-      backgroundColor: '#f8fafc',
-      selection: false,
-    })
-    setCanvas(c)
-
-    loadSeats(c)
-
-    // Click Handler
-    c.on('mouse:down', (opt: any) => {
-        if (opt.target && opt.target.type === 'group') {
-            const seat = opt.target
-            
-            // Prevent booking if taken
-            if (seat.seatStatus === 'occupied') {
-                alert("This seat is already taken!")
-                return
-            }
-
-            // Open Booking Drawer
-            setSelectedSeat({
-                id: seat.seatId,
-                label: seat.seatLabel,
-                price: seat.seatPrice || 500,
-                category: seat.seatCategory
-            })
-            setIsDrawerOpen(true)
-        }
-    })
-
-    return () => { c.dispose() }
+    const fetchSeats = async () => {
+      // Fetch seats for this venue
+      const { data } = await supabase.from('seats').select('*').eq('venue_id', venueId)
+      
+      // If no seats exist in DB, generate fake ones for the demo so it looks good
+      if (!data || data.length === 0) {
+        setSeats(generateDemoSeats())
+      } else {
+        setSeats(data)
+      }
+      setLoading(false)
+    }
+    fetchSeats()
   }, [venueId])
 
-  const loadSeats = async (c: fabric.Canvas) => {
-    const { data: seats } = await supabase.from('seats').select('*').eq('venue_id', venueId)
-    
-    if (seats) {
-        c.clear()
-        seats.forEach(s => {
-            // Color Logic
-            let color = '#22c55e' // Green (Free)
-            if (s.status === 'occupied') color = '#94a3b8' // Grey (Taken)
-            else if (s.category === 'vip') color = '#eab308' // Gold (VIP)
-            else if (s.category === 'window') color = '#3b82f6' // Blue (Window)
-
-            let shape: any
-            if (s.type === 'circle') {
-                shape = new fabric.Circle({ radius: 20, fill: color, stroke: 'white', strokeWidth: 2 })
-            } else {
-                shape = new fabric.Rect({ width: 50, height: 50, rx: 8, fill: color, stroke: 'white', strokeWidth: 2 })
-            }
-
-            const text = new fabric.Text(s.label, { fontSize: 12, fill: 'white', fontWeight: 'bold', originX: 'center', originY: 'center' })
-            
-            const group = new fabric.Group([shape, text], { 
-                left: s.x, 
-                top: s.y, 
-                hasControls: false, 
-                lockMovementX: true, 
-                lockMovementY: true,
-                hoverCursor: s.status === 'free' ? 'pointer' : 'not-allowed'
-            })
-
-            // Attach data to object so we can read it on click
-            // @ts-ignore
-            group.seatId = s.id; group.seatStatus = s.status; group.seatPrice = s.price; group.seatLabel = s.label; group.seatCategory = s.category;
-
-            c.add(group)
-        })
-        c.renderAll()
-    }
+  const handleSeatClick = (seat: any) => {
+    if (seat.status === 'occupied') return
+    setSelectedSeatId(seat.id)
+    onSeatSelect(seat)
   }
 
-  const handleBooking = async () => {
-      setBooking(true)
-      
-      // 1. Check Login
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) {
-          alert("Please login to book tickets!")
-          router.push('/login')
-          return
-      }
-
-      // 2. Book the Seat (Update DB)
-      const { error } = await supabase
-        .from('seats')
-        .update({ status: 'occupied', user_id: session.user.id })
-        .eq('id', selectedSeat.id)
-
-      if (error) {
-          alert("Booking failed: " + error.message)
-      } else {
-          setIsDrawerOpen(false)
-          router.push('/tickets?success=true') // Redirect to tickets page
-      }
-      setBooking(false)
-  }
+  if (loading) return <div className="flex justify-center p-10"><Loader2 className="animate-spin text-slate-300"/></div>
 
   return (
-    <div className="w-full flex justify-center bg-slate-100 rounded-xl border border-slate-200 overflow-hidden">
-      <canvas ref={canvasEl} />
+    <div className="w-full overflow-x-auto p-4 bg-slate-50 rounded-2xl border border-slate-100 min-h-[300px] relative">
+       {/* Stage / DJ Booth Indicator */}
+       <div className="w-full h-8 bg-slate-200 rounded-lg mb-8 text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-8">
+          Stage / DJ Console
+       </div>
 
-      {/* BOOKING DRAWER */}
-      <Drawer open={isDrawerOpen} onOpenChange={setIsDrawerOpen}>
-        <DrawerContent>
-            <DrawerHeader>
-                <DrawerTitle>Confirm Booking</DrawerTitle>
-            </DrawerHeader>
-            <div className="p-4 space-y-4">
-                <div className="flex justify-between items-center bg-slate-50 p-4 rounded-xl border border-slate-100">
-                    <div>
-                        <p className="text-sm text-slate-500">Seat</p>
-                        <h3 className="text-2xl font-black text-slate-900">{selectedSeat?.label}</h3>
-                        <span className="text-xs uppercase font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded">{selectedSeat?.category}</span>
-                    </div>
-                    <div className="text-right">
-                        <p className="text-sm text-slate-500">Price</p>
-                        <h3 className="text-2xl font-black text-green-600">₹{selectedSeat?.price}</h3>
-                    </div>
-                </div>
+       <div className="relative w-[300px] h-[300px] mx-auto">
+          {seats.map((seat, i) => (
+             <div
+                key={i}
+                onClick={() => handleSeatClick(seat)}
+                className={`absolute transition-all cursor-pointer flex items-center justify-center text-[10px] font-bold shadow-sm
+                  ${seat.status === 'occupied' ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : ''}
+                  ${selectedSeatId === seat.id ? 'bg-black text-white scale-110 shadow-lg ring-4 ring-black/10' : 'bg-white border border-slate-200 text-slate-600 hover:border-blue-500'}
+                `}
+                style={{
+                    left: `${seat.x}px`,
+                    top: `${seat.y}px`,
+                    width: seat.type === 'rect' ? '60px' : '40px',
+                    height: '40px',
+                    borderRadius: seat.type === 'rect' ? '8px' : '50%'
+                }}
+             >
+                {seat.label}
+             </div>
+          ))}
+       </div>
 
-                <Button onClick={handleBooking} disabled={booking} className="w-full py-8 text-lg font-bold bg-slate-900 text-white rounded-xl shadow-xl hover:bg-slate-800">
-                    {booking ? <Loader2 className="animate-spin mr-2" /> : <CreditCard className="mr-2" />}
-                    {booking ? "Processing..." : "Pay & Book"}
-                </Button>
-            </div>
-        </DrawerContent>
-      </Drawer>
+       {/* Legend */}
+       <div className="flex justify-center gap-4 mt-8 text-[10px] uppercase font-bold text-slate-400">
+          <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-white border border-slate-300"></div> Available</div>
+          <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-black"></div> Selected</div>
+          <div className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-slate-200"></div> Booked</div>
+       </div>
     </div>
   )
+}
+
+// Fallback generator so the map is never empty
+function generateDemoSeats() {
+    const seats = []
+    // VIP Tables
+    seats.push({ id: 'v1', x: 20, y: 20, type: 'rect', label: 'VIP-1', status: 'free', price: 2000 })
+    seats.push({ id: 'v2', x: 220, y: 20, type: 'rect', label: 'VIP-2', status: 'occupied', price: 2000 })
+    // Standard Tables
+    seats.push({ id: 's1', x: 50, y: 100, type: 'circle', label: 'T-1', status: 'free', price: 1000 })
+    seats.push({ id: 's2', x: 130, y: 100, type: 'circle', label: 'T-2', status: 'free', price: 1000 })
+    seats.push({ id: 's3', x: 210, y: 100, type: 'circle', label: 'T-3', status: 'free', price: 1000 })
+    // Booths
+    seats.push({ id: 'b1', x: 20, y: 200, type: 'rect', label: 'B-1', status: 'free', price: 1500 })
+    seats.push({ id: 'b2', x: 220, y: 200, type: 'rect', label: 'B-2', status: 'free', price: 1500 })
+    return seats
 }

@@ -1,13 +1,15 @@
-import './globals.css'
-import Navbar from '@/components/Navbar'
+import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
+import './globals.css'
+// Now these imports will work because we created the files!
+import Header from '@/components/Header'
+import MobileNav from '@/components/MobileNav'
 
-// Using the Inter font to make the app look modern and professional
 const inter = Inter({ subsets: ['latin'] })
 
-export const metadata = {
-  title: 'SeatSpot - Discover & Book Your Vibe',
-  description: 'The real-time discovery and table booking platform for the modern nightlife.',
+export const metadata: Metadata = {
+  title: 'SeatSpot',
+  description: 'Find your vibe.',
 }
 
 export default function RootLayout({
@@ -17,20 +19,17 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={`${inter.className} antialiased bg-slate-50`}>
-        {/* 1. The Navbar is placed here so it appears on EVERY page.
-          2. It is "fixed" to the top, so we add "pt-16" (padding-top) 
-             to the body so the rest of the app content starts below it.
-        */}
-        <Navbar />
+      <body className={`${inter.className} bg-slate-50`}>
+        {/* Desktop Header (Fixed Top) */}
+        <Header />
         
-        <main className="min-h-screen pt-16">
+        {/* Main Content (Padded so it doesn't hide behind header/footer) */}
+        <main className="pt-16 pb-20 md:pb-0 min-h-screen">
           {children}
         </main>
 
-        {/* Optional: You can add a Footer here later 
-          if you want it to show up on every page.
-        */}
+        {/* Mobile Bottom Nav (Fixed Bottom) */}
+        <MobileNav />
       </body>
     </html>
   )

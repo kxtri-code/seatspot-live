@@ -3,9 +3,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { ArrowRight, Minus, Plus, Users } from 'lucide-react'
+import { ArrowRight, Minus, Plus } from 'lucide-react'
 
-// --- 1. ASSETS CONFIGURATION (High-Quality Video Loops) ---
+// --- 1. ASSETS CONFIGURATION ---
 const VIBE_ASSETS = {
   club: {
     video: "https://assets.mixkit.co/videos/preview/mixkit-crowd-dancing-at-a-concert-with-hands-up-42589-large.mp4",
@@ -38,7 +38,6 @@ export default function LandingPage() {
   const [isVideoLoaded, setIsVideoLoaded] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
 
-  // Smart Preloading: Reset opacity when vibe changes to create fade effect
   useEffect(() => {
     setIsVideoLoaded(false)
     if(videoRef.current) {
@@ -51,20 +50,21 @@ export default function LandingPage() {
   }
 
   return (
-    <div className="h-screen w-full bg-black font-sans relative overflow-hidden flex flex-col justify-end">
+    // Added padding-top (pt-20) to account for the fixed main header
+    <div className="h-screen w-full bg-black font-sans relative overflow-hidden flex flex-col justify-end pt-20">
       
       {/* --- 2. DYNAMIC CINEMATIC BACKGROUND --- */}
       <div className="absolute inset-0 z-0">
-         {/* Gradient Overlay for Text Readability */}
-         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/20 to-black/40 z-20 duration-500" />
+         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-black/10 z-20" />
          
+         {/* Added 'muted' and 'playsInline' for reliable autoplay */}
          <video 
             ref={videoRef}
             autoPlay 
             loop 
             muted 
             playsInline
-            key={selectedVibe} // Forces React to re-mount video element on change for instant swap
+            key={selectedVibe}
             onLoadedData={() => setIsVideoLoaded(true)}
             className={`w-full h-full object-cover transition-opacity duration-1000 transform scale-105 ${isVideoLoaded ? 'opacity-100' : 'opacity-0'}`}
          >
@@ -73,7 +73,7 @@ export default function LandingPage() {
       </div>
 
       {/* --- 3. FLOATING UI LAYER --- */}
-      <div className="relative z-30 w-full max-w-md mx-auto px-6 pb-12 flex flex-col gap-8">
+      <div className="relative z-30 w-full max-w-md mx-auto px-6 pb-24 flex flex-col gap-8">
           
           {/* DYNAMIC TEXT */}
           <div className="space-y-2 animate-in slide-in-from-bottom-8 duration-700">
@@ -128,15 +128,7 @@ export default function LandingPage() {
           </div>
 
       </div>
-
-      {/* --- 4. TOP NAV (Minimalist) --- */}
-      <div className="fixed top-0 left-0 w-full p-6 flex justify-between items-center z-50 mix-blend-difference">
-          <span className="text-white font-black text-xl tracking-tighter">SeatSpot.</span>
-          <Button variant="ghost" onClick={() => router.push('/profile')} className="text-white hover:bg-white/20 rounded-full font-bold uppercase text-xs tracking-widest border border-white/20 px-4 h-10">
-              <Users className="w-4 h-4 mr-2" /> My ID
-          </Button>
-      </div>
-
+      {/* REMOVED: The internal header that was causing the duplicate logo */}
     </div>
   )
 }

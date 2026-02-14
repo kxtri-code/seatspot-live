@@ -5,8 +5,9 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 import { Loader2, MapPin, Star, ArrowLeft, Compass, Heart, Ticket, Flame, Zap, Coffee, Music, Utensils } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import StoryViewer from '@/components/StoryViewer'
 
-// --- MOCK STORIES DATA ---
+// --- MOCK STORIES DATA (Simulating Live Updates) ---
 const STORIES = [
     { id: 1, name: 'The Box', img: 'https://images.unsplash.com/photo-1574096079513-d82599697559?w=400&h=400&fit=crop', hasUpdate: true },
     { id: 2, name: 'SkyDeck', img: 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=400&h=400&fit=crop', hasUpdate: true },
@@ -18,25 +19,32 @@ function ExploreContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   
+  // Get URL Params (e.g., ?vibe=club&guests=4)
   const vibe = searchParams.get('vibe') || 'All'
   const guests = searchParams.get('guests') || '2'
   
+  // Data State
   const [venues, setVenues] = useState<any[]>([])
   const [events, setEvents] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const isFetching = useRef(false)
 
-  // Derived Lists
+  // Smart Lists
   const [matches, setMatches] = useState<any[]>([])
   const [trending, setTrending] = useState<any[]>([])
   const [topPicks, setTopPicks] = useState<any[]>([])
 
+  // Story Viewer State
+  const [selectedStoryIndex, setSelectedStoryIndex] = useState<number | null>(null)
+
+  // Helper: Get Icon based on Venue Type
   const getVibeIcon = (type: string) => {
     if (type?.toLowerCase().includes('cafe')) return <Coffee className="w-4 h-4" />
     if (type?.toLowerCase().includes('club')) return <Music className="w-4 h-4" />
     return <Utensils className="w-4 h-4" />
   }
 
+  // Fetch Data on Load or Vibe Change
   useEffect(() => {
     const loadSystemData = async (retryCount = 0) => {
       if (isFetching.current && retryCount === 0) return;
@@ -50,14 +58,17 @@ function ExploreContent() {
         if (data) {
           setVenues(data);
           
+          // 1. Filter Matches
           const strictMatches = data.filter(v => 
             vibe === 'All' || v.type?.toLowerCase().includes(vibe.toLowerCase())
           );
           setMatches(strictMatches.length > 0 ? strictMatches : data.slice(0, 3)); 
 
+          // 2. Randomize Trending (Simulated)
           const sortedByVibe = [...data].sort(() => 0.5 - Math.random());
           setTrending(sortedByVibe.slice(0, 4));
 
+          // 3. Filter Top Picks (Rating >= 4.5)
           const highRated = data.filter(v => (v.rating || 0) >= 4.5);
           setTopPicks(highRated);
         }
@@ -69,6 +80,7 @@ function ExploreContent() {
         isFetching.current = false;
 
       } catch (err: any) {
+        // Retry logic for connection glitches
         if ((err.name === 'AbortError' || err.message?.includes('aborted')) && retryCount < 3) {
           setTimeout(() => loadSystemData(retryCount + 1), 500);
         } else {
@@ -80,6 +92,7 @@ function ExploreContent() {
     loadSystemData();
   }, [vibe]);
 
+  // Venue Card Component
   const VenueCard = ({ venue, tag, color }: { venue: any, tag?: string, color?: string }) => (
     <div 
       onClick={() => router.push(`/venues/${venue.id}`)}
@@ -118,6 +131,15 @@ function ExploreContent() {
   return (
     <div className="min-h-screen bg-slate-50 pb-20 font-sans">
       
+      {/* 1. IMMERSIVE STORY VIEWER OVERLAY */}
+      {selectedStoryIndex !== null && (
+          <StoryViewer 
+            stories={STORIES} 
+            initialIndex={selectedStoryIndex} 
+            onClose={() => setSelectedStoryIndex(null)} 
+          />
+      )}
+      
       {/* HEADER (Sticky) */}
       <div className="bg-white/80 backdrop-blur-md px-4 py-4 sticky top-16 z-30 border-b border-slate-100/50 flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -140,7 +162,7 @@ function ExploreContent() {
         
         {/* NEW: LIVE STORIES SECTION */}
         <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar px-1">
-            {/* My Story (Add) */}
+            {/* My Story (Add Button) */}
             <div className="flex flex-col items-center gap-1 shrink-0">
                 <div className="w-16 h-16 rounded-full bg-slate-100 border-2 border-slate-200 flex items-center justify-center relative active:scale-95 transition-transform cursor-pointer">
                     <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center absolute bottom-0 right-0 border-2 border-white text-white font-bold">+</div>
@@ -148,12 +170,16 @@ function ExploreContent() {
                 <span className="text-[10px] font-bold text-slate-400">My Story</span>
             </div>
 
-            {/* Venue Stories */}
-            {STORIES.map(story => (
-                <div key={story.id} className="flex flex-col items-center gap-1 shrink-0 cursor-pointer active:scale-95 transition-transform">
+            {/* Venue Stories List */}
+            {STORIES.map((story, index) => (
+                <div 
+                    key={story.id} 
+                    onClick={() => setSelectedStoryIndex(index)} // Opens the Viewer
+                    className="flex flex-col items-center gap-1 shrink-0 cursor-pointer active:scale-95 transition-transform"
+                >
                     <div className={`w-16 h-16 rounded-full p-[2px] ${story.hasUpdate ? 'bg-gradient-to-tr from-blue-500 to-purple-500' : 'bg-slate-200'}`}>
                         <div className="w-full h-full rounded-full border-2 border-white overflow-hidden">
-                            <img src={story.img} className="w-full h-full object-cover" />
+                            <img src={story.img} className="w-full h-full object-cover" alt={story.name} />
                         </div>
                     </div>
                     <span className="text-[10px] font-bold text-slate-600">{story.name}</span>
@@ -237,6 +263,7 @@ function ExploreContent() {
               </div>
             </div>
 
+            {/* Bottom CTA */}
             <div className="pt-8 pb-10 text-center">
                 <p className="text-slate-400 text-sm font-medium mb-4">Didn't find what you're looking for?</p>
                 <Button variant="outline" className="rounded-full px-8 border-slate-300 text-slate-600 font-bold" onClick={() => setVenues(venues)}>

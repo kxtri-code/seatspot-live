@@ -1,29 +1,30 @@
 "use client"
 
-import { useState, useEffect, useRef } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { ArrowRight, Minus, Plus } from 'lucide-react'
+import { ArrowRight, Minus, Plus, Users } from 'lucide-react'
 
-// --- 1. ASSETS CONFIGURATION ---
+// --- 1. ASSETS CONFIGURATION (Premium Static Images) ---
+// Using high-quality Unsplash IDs for a premium look
 const VIBE_ASSETS = {
   club: {
-    video: "https://assets.mixkit.co/videos/preview/mixkit-crowd-dancing-at-a-concert-with-hands-up-42589-large.mp4",
+    image: "https://images.unsplash.com/photo-1566737236500-c8ac43014a67?q=80&w=1920&auto=format&fit=crop",
     headline: "Own the Night.",
     sub: "VIP Tables & Guestlists."
   },
   cafe: {
-    video: "https://assets.mixkit.co/videos/preview/mixkit-coffee-pouring-in-slow-motion-4284-large.mp4",
+    image: "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?q=80&w=1920&auto=format&fit=crop",
     headline: "Morning Brew.",
     sub: "Workspaces & Chill Spots."
   },
   dining: {
-    video: "https://assets.mixkit.co/videos/preview/mixkit-friends-clinking-wine-glasses-at-a-dinner-party-4648-large.mp4",
+    image: "https://images.unsplash.com/photo-1559339352-11d035aa65de?q=80&w=1920&auto=format&fit=crop",
     headline: "Fine Tastes.",
     sub: "Dates & Family Dinners."
   },
   lounge: {
-    video: "https://assets.mixkit.co/videos/preview/mixkit-young-people-having-drinks-at-a-bar-4279-large.mp4",
+    image: "https://images.unsplash.com/photo-1572116469696-31de0f17cc34?q=80&w=1920&auto=format&fit=crop",
     headline: "Just Vibe.",
     sub: "Cocktails & Conversations."
   }
@@ -35,45 +36,33 @@ export default function LandingPage() {
   const router = useRouter()
   const [guestCount, setGuestCount] = useState(2)
   const [selectedVibe, setSelectedVibe] = useState<VibeType>('club')
-  const [isVideoLoaded, setIsVideoLoaded] = useState(false)
-  const videoRef = useRef<HTMLVideoElement>(null)
-
-  useEffect(() => {
-    setIsVideoLoaded(false)
-    if(videoRef.current) {
-        videoRef.current.load()
-    }
-  }, [selectedVibe])
+  const [isImageLoaded, setIsImageLoaded] = useState(false)
 
   const handleSearch = () => {
     router.push(`/explore?vibe=${selectedVibe}&guests=${guestCount}`)
   }
 
   return (
-    // Added padding-top (pt-20) to account for the fixed main header
-    <div className="h-screen w-full bg-black font-sans relative overflow-hidden flex flex-col justify-end pt-20">
+    // --- FIX ALIGNMENT: Changed 'justify-end' to 'justify-center' and added padding ---
+    <div className="h-screen w-full bg-black font-sans relative overflow-hidden flex flex-col justify-center pb-20">
       
-      {/* --- 2. DYNAMIC CINEMATIC BACKGROUND --- */}
+      {/* --- 2. DYNAMIC PREMIUM BACKGROUND --- */}
       <div className="absolute inset-0 z-0">
-         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-black/10 z-20" />
+         {/* Darker Gradient Overlay for better text contrast */}
+         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-black/30 z-20" />
          
-         {/* Added 'muted' and 'playsInline' for reliable autoplay */}
-         <video 
-            ref={videoRef}
-            autoPlay 
-            loop 
-            muted 
-            playsInline
-            key={selectedVibe}
-            onLoadedData={() => setIsVideoLoaded(true)}
-            className={`w-full h-full object-cover transition-opacity duration-1000 transform scale-105 ${isVideoLoaded ? 'opacity-100' : 'opacity-0'}`}
-         >
-             <source src={VIBE_ASSETS[selectedVibe].video} type="video/mp4" />
-         </video>
+         {/* Replaced Video with Image tag with smooth transition */}
+         <img 
+            src={VIBE_ASSETS[selectedVibe].image}
+            alt={selectedVibe}
+            key={selectedVibe} // Forces re-render for transition effect
+            onLoad={() => setIsImageLoaded(true)}
+            className={`w-full h-full object-cover transition-all duration-700 transform scale-105 ${isImageLoaded ? 'opacity-100 blur-0' : 'opacity-0 blur-lg'}`}
+         />
       </div>
 
       {/* --- 3. FLOATING UI LAYER --- */}
-      <div className="relative z-30 w-full max-w-md mx-auto px-6 pb-24 flex flex-col gap-8">
+      <div className="relative z-30 w-full max-w-md mx-auto px-6 flex flex-col gap-8 mt-20">
           
           {/* DYNAMIC TEXT */}
           <div className="space-y-2 animate-in slide-in-from-bottom-8 duration-700">
@@ -84,7 +73,7 @@ export default function LandingPage() {
               <h1 className="text-6xl font-black text-white leading-none tracking-tighter drop-shadow-2xl">
                   {VIBE_ASSETS[selectedVibe].headline}
               </h1>
-              <p className="text-white/80 text-lg font-medium tracking-wide">
+              <p className="text-white/90 text-lg font-medium tracking-wide">
                   {VIBE_ASSETS[selectedVibe].sub}
               </p>
           </div>
@@ -128,7 +117,22 @@ export default function LandingPage() {
           </div>
 
       </div>
-      {/* REMOVED: The internal header that was causing the duplicate logo */}
+
+      {/* --- 4. TOP NAV --- */}
+      <div className="fixed top-0 left-0 w-full p-6 flex justify-between items-center z-50">
+          {/* Replaced text with Logo Image for premium feel */}
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-white rounded-xl flex items-center justify-center shadow-lg">
+                <div className="w-4 h-4 bg-black rounded-full" />
+            </div>
+            <span className="text-white font-black text-xl tracking-tighter drop-shadow-lg">SeatSpot.</span>
+          </div>
+          
+          <Button variant="ghost" onClick={() => router.push('/profile')} className="text-white bg-white/10 hover:bg-white/20 rounded-full font-bold uppercase text-xs tracking-widest border border-white/10 px-4 h-10 backdrop-blur-md shadow-lg">
+              <Users className="w-4 h-4 mr-2" /> My ID
+          </Button>
+      </div>
+
     </div>
   )
 }

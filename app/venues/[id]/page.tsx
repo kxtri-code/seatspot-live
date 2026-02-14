@@ -5,46 +5,43 @@ import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 import { 
   Loader2, ArrowLeft, MapPin, Star, Share2, Users, MessageSquare, 
-  CheckCircle, Calendar, Heart, Flame, Music, Info 
+  CheckCircle, Calendar, Heart, Flame, Music, Info, Minus, Plus 
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import SeatMap from '@/components/SeatMap' // Importing the new SeatMap component
+import SeatMap from '@/components/SeatMap'
 
 export default function VenueDetails() {
   const params = useParams()
   const router = useRouter()
-  // Handle ID safely
   const id = Array.isArray(params?.id) ? params.id[0] : params?.id
 
-  // --- STATE VARIABLES ---
+  // --- STATE ---
   const [venue, setVenue] = useState<any>(null)
   const [events, setEvents] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [following, setFollowing] = useState(false)
   
-  // Booking & Auth State
+  // Booking State
   const [currentUser, setCurrentUser] = useState<any>(null)
   const [isBookingOpen, setIsBookingOpen] = useState(false)
-  const [bookingStep, setBookingStep] = useState(1) // 1=Select Seat, 2=Success
+  const [bookingStep, setBookingStep] = useState(1) 
   const [isBookingLoading, setIsBookingLoading] = useState(false)
   const [selectedSeat, setSelectedSeat] = useState<any>(null)
+  const [guestCount, setGuestCount] = useState(2) // Default to 2 guests
   
-  // Vibe Score (Static for demo)
   const vibeScore = 92; 
 
-  // --- 1. CHECK AUTH & FETCH DATA ---
+  // --- INIT ---
   useEffect(() => {
     if (!id) return
 
     const initPage = async () => {
       setLoading(true)
       try {
-        // A. Get Current User
         const { data: { user } } = await supabase.auth.getUser()
         setCurrentUser(user)
 
-        // B. Fetch Venue
         const { data: vData, error: vError } = await supabase
           .from('venues')
           .select('*')
@@ -54,7 +51,6 @@ export default function VenueDetails() {
         if (vError) throw vError
         setVenue(vData)
 
-        // C. Fetch Events
         const { data: eData } = await supabase
           .from('events')
           .select('*')
@@ -73,7 +69,6 @@ export default function VenueDetails() {
     initPage()
   }, [id])
 
-  // --- 2. HANDLER: OPEN BOOKING (Auth Guard) ---
   const handleOpenBooking = () => {
       if (!currentUser) {
           const confirmLogin = confirm("You need to login to book a table. Go to login?")
@@ -83,32 +78,28 @@ export default function VenueDetails() {
       setIsBookingOpen(true)
   }
 
-  // --- 3. HANDLER: SUBMIT BOOKING ---
   const handleBookingSubmit = async () => {
     if (!selectedSeat) {
-        alert("Please select a seat from the map!");
+        alert("Please select a seat!");
         return;
     }
 
     setIsBookingLoading(true);
 
     try {
-        // Save to 'tickets' table
         const { error } = await supabase.from('tickets').insert({
-            user_id: currentUser.id, // Linked to the logged-in user
+            user_id: currentUser.id,
             venue_id: venue.id,
             venue_name: venue.name,
-            guest_name: currentUser.email, // Or prompt for name if needed
+            guest_name: currentUser.email,
             guest_phone: "N/A", 
             date: new Date().toISOString(),
-            admit_count: 4, 
-            seat_label: selectedSeat.label, // The exact seat (e.g. "VIP-1")
+            admit_count: guestCount, // <--- NOW USES YOUR SELECTED COUNT
+            seat_label: selectedSeat.label,
             status: 'confirmed'
         });
 
         if (error) throw error;
-        
-        // Success!
         setBookingStep(2);
 
     } catch (err: any) {
@@ -118,12 +109,7 @@ export default function VenueDetails() {
     }
   }
 
-  if (loading) return (
-      <div className="h-screen flex flex-col items-center justify-center bg-white gap-4">
-          <Loader2 className="animate-spin text-blue-600 w-8 h-8"/>
-          <p className="text-sm text-slate-400 font-bold uppercase tracking-widest">Loading Venue...</p>
-      </div>
-  )
+  if (loading) return <div className="h-screen flex items-center justify-center bg-white"><Loader2 className="animate-spin text-blue-600"/></div>
 
   if (!venue) return null;
 
@@ -139,11 +125,6 @@ export default function VenueDetails() {
              <Button variant="outline" size="icon" onClick={() => router.back()} className="rounded-full bg-black/20 border-white/10 text-white backdrop-blur-md">
                  <ArrowLeft className="w-5 h-5" />
              </Button>
-             <div className="flex gap-3">
-                <Button variant="outline" size="icon" className="rounded-full bg-black/20 border-white/10 text-white backdrop-blur-md">
-                    <Share2 className="w-4 h-4" />
-                </Button>
-             </div>
          </div>
 
          {/* VIBE METER */}
@@ -158,15 +139,6 @@ export default function VenueDetails() {
          </div>
 
          <div className="absolute bottom-0 left-0 w-full p-6 text-white">
-             <div className="flex justify-between items-end mb-3">
-                 <span className="bg-blue-600 text-white px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg border border-blue-400/50">
-                    {venue.type}
-                 </span>
-                 <div className="flex items-center gap-1 bg-black/40 backdrop-blur-md px-2 py-1 rounded-lg border border-white/10">
-                     <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
-                     <span className="text-xs font-bold">{venue.rating}</span>
-                 </div>
-             </div>
              <h1 className="text-4xl font-black leading-none mb-2 tracking-tight">{venue.name}</h1>
              <p className="flex items-center gap-1 text-slate-300 text-sm font-medium">
                  <MapPin className="w-4 h-4 text-red-500" /> {venue.location}
@@ -174,7 +146,7 @@ export default function VenueDetails() {
          </div>
       </div>
 
-      {/* MAIN CONTENT */}
+      {/* CONTENT */}
       <div className="bg-white rounded-t-[2.5rem] -mt-8 relative z-10 min-h-screen px-6 py-8">
           
           <div className="flex items-center justify-between mb-8">
@@ -227,23 +199,11 @@ export default function VenueDetails() {
             </TabsContent>
 
             <TabsContent value="about" className="space-y-6">
-                <div>
+                 <div>
                     <h3 className="font-black text-slate-900 text-lg mb-2 flex items-center gap-2"><Info className="w-4 h-4 text-blue-500"/> The Vibe</h3>
                     <p className="text-slate-600 text-sm leading-relaxed font-medium">
                         {venue.description || "Experience the best atmosphere in Dimapur. Perfect for friends, family, and special occasions."}
                     </p>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-slate-50 p-5 rounded-3xl border border-slate-100">
-                        <Users className="w-6 h-6 text-blue-500 mb-2" />
-                        <div className="text-2xl font-black text-slate-900">120+</div>
-                        <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Capacity</div>
-                    </div>
-                    <div className="bg-slate-50 p-5 rounded-3xl border border-slate-100">
-                        <MessageSquare className="w-6 h-6 text-green-500 mb-2" />
-                        <div className="text-2xl font-black text-slate-900">4.8</div>
-                        <div className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Service</div>
-                    </div>
                 </div>
             </TabsContent>
 
@@ -251,10 +211,7 @@ export default function VenueDetails() {
                  <div className="space-y-4">
                      <div className="p-5 bg-white rounded-3xl border border-slate-100 shadow-sm">
                          <div className="flex justify-between mb-2">
-                             <div className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                                <div className="w-6 h-6 rounded-full bg-yellow-100 flex items-center justify-center text-xs text-yellow-700">A</div>
-                                Alex K.
-                             </div>
+                             <div className="font-bold text-slate-900 text-sm flex items-center gap-2">Alex K.</div>
                              <div className="flex text-yellow-400"><Star className="w-3 h-3 fill-current"/><Star className="w-3 h-3 fill-current"/><Star className="w-3 h-3 fill-current"/><Star className="w-3 h-3 fill-current"/><Star className="w-3 h-3 fill-current"/></div>
                          </div>
                          <p className="text-xs text-slate-500 font-medium leading-relaxed">"Amazing ambience and the food was top notch!"</p>
@@ -265,65 +222,98 @@ export default function VenueDetails() {
 
       </div>
 
-      {/* STICKY "BOOK TABLE" BUTTON */}
       <div className="fixed bottom-0 left-0 w-full bg-white p-4 border-t border-slate-100 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] z-40 pb-8">
-          <Button 
-            onClick={handleOpenBooking}
-            className="w-full h-14 rounded-full bg-slate-900 text-white font-black text-lg shadow-xl hover:bg-slate-800 transition-all active:scale-95"
-          >
+          <Button onClick={handleOpenBooking} className="w-full h-14 rounded-full bg-slate-900 text-white font-black text-lg shadow-xl hover:bg-slate-800 transition-all active:scale-95">
               Book Table
           </Button>
       </div>
 
-      {/* BOOKING DRAWER (Seat Map) */}
+      {/* --- REVISED BOOKING DRAWER --- */}
       {isBookingOpen && (
           <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/80 backdrop-blur-sm animate-in fade-in">
-              <div className="bg-white w-full max-w-md rounded-t-[2.5rem] p-6 shadow-2xl animate-in slide-in-from-bottom duration-300 h-[85vh] flex flex-col">
-                  <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-4 shrink-0" />
+              <div className="bg-white w-full max-w-md rounded-t-[2.5rem] shadow-2xl animate-in slide-in-from-bottom duration-300 h-[85vh] flex flex-col relative overflow-hidden">
+                  
+                  {/* DRAWER HANDLE */}
+                  <div className="w-full pt-4 pb-2 bg-white z-10">
+                    <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto" />
+                  </div>
                   
                   {bookingStep === 1 ? (
-                      <div className="flex-1 flex flex-col overflow-y-auto">
-                          <h3 className="text-2xl font-black text-slate-900 mb-1">Select Table</h3>
-                          <p className="text-sm text-slate-500 mb-6">Pick your spot at {venue.name}</p>
+                      <>
+                        {/* SCROLLABLE CONTENT AREA */}
+                        <div className="flex-1 overflow-y-auto px-6 pb-24">
+                            <h3 className="text-2xl font-black text-slate-900 mb-1">Select Table</h3>
+                            <p className="text-sm text-slate-500 mb-6">Pick your spot at {venue.name}</p>
 
-                          {/* SEAT MAP COMPONENT */}
-                          <div className="flex-1 min-h-[300px]">
-                             <SeatMap venueId={venue.id} onSeatSelect={setSelectedSeat} />
-                          </div>
+                            {/* SEAT MAP */}
+                            <div className="flex-1 min-h-[300px] mb-6">
+                                <SeatMap venueId={venue.id} onSeatSelect={setSelectedSeat} />
+                            </div>
 
-                          {/* SELECTED SEAT DETAILS */}
-                          {selectedSeat && (
-                              <div className="mt-4 p-4 bg-blue-50 border border-blue-100 rounded-2xl flex justify-between items-center animate-in slide-in-from-bottom-2">
-                                  <div>
-                                      <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">Selected</p>
-                                      <p className="text-xl font-black text-blue-900">{selectedSeat.label}</p>
-                                  </div>
-                                  <div className="text-right">
-                                      <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">Price</p>
-                                      <p className="text-xl font-black text-blue-900">₹{selectedSeat.price}</p>
-                                  </div>
-                              </div>
-                          )}
+                            {/* NEW: GUEST COUNTER */}
+                            <div className="mb-8 bg-slate-50 p-4 rounded-2xl border border-slate-100 flex items-center justify-between">
+                                <div>
+                                    <h4 className="font-bold text-slate-900">Total Guests</h4>
+                                    <p className="text-xs text-slate-400 font-medium">Includes yourself</p>
+                                </div>
+                                <div className="flex items-center gap-4 bg-white p-2 rounded-xl shadow-sm border border-slate-100">
+                                    <button 
+                                        onClick={() => setGuestCount(Math.max(1, guestCount - 1))}
+                                        className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-100 hover:bg-slate-200 active:scale-90 transition-all"
+                                    >
+                                        <Minus className="w-4 h-4 text-slate-600" />
+                                    </button>
+                                    <span className="font-black text-lg w-4 text-center">{guestCount}</span>
+                                    <button 
+                                        onClick={() => setGuestCount(Math.min(10, guestCount + 1))}
+                                        className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-900 hover:bg-slate-800 active:scale-90 transition-all"
+                                    >
+                                        <Plus className="w-4 h-4 text-white" />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
 
-                          <Button 
-                            onClick={handleBookingSubmit} 
-                            disabled={!selectedSeat || isBookingLoading}
-                            className="w-full h-14 mt-4 bg-slate-900 text-white font-bold rounded-2xl text-lg"
-                          >
-                              {isBookingLoading ? <Loader2 className="animate-spin"/> : `Book ${selectedSeat ? selectedSeat.label : ''}`}
-                          </Button>
-                          <Button variant="ghost" onClick={() => setIsBookingOpen(false)} className="mt-2">Cancel</Button>
-                      </div>
+                        {/* STICKY BOTTOM BAR (Always Visible) */}
+                        <div className="absolute bottom-0 left-0 w-full bg-white p-6 border-t border-slate-100 shadow-xl z-20">
+                            {selectedSeat && (
+                                <div className="flex justify-between items-end mb-4">
+                                    <div>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Seat</p>
+                                        <p className="text-xl font-black text-slate-900">{selectedSeat.label}</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Total</p>
+                                        <p className="text-xl font-black text-blue-600">₹{selectedSeat.price}</p>
+                                    </div>
+                                </div>
+                            )}
+                            <div className="flex gap-3">
+                                <Button variant="outline" onClick={() => setIsBookingOpen(false)} className="h-14 rounded-2xl px-6 font-bold border-slate-200">
+                                    Close
+                                </Button>
+                                <Button 
+                                    onClick={handleBookingSubmit} 
+                                    disabled={!selectedSeat || isBookingLoading}
+                                    className="flex-1 h-14 bg-slate-900 text-white font-bold rounded-2xl text-lg shadow-lg shadow-slate-200"
+                                >
+                                    {isBookingLoading ? <Loader2 className="animate-spin"/> : `Confirm Booking`}
+                                </Button>
+                            </div>
+                        </div>
+                      </>
                   ) : (
-                      <div className="flex-1 flex flex-col items-center justify-center text-center space-y-4">
+                      <div className="flex-1 flex flex-col items-center justify-center text-center space-y-4 px-6">
                           <CheckCircle className="w-24 h-24 text-green-500 mx-auto animate-bounce" />
-                          <h3 className="text-3xl font-black text-slate-900">Booked!</h3>
-                          <p className="text-slate-500">Your ticket for <strong>{selectedSeat?.label}</strong> is ready.</p>
+                          <h3 className="text-3xl font-black text-slate-900">All Set!</h3>
+                          <p className="text-slate-500 font-medium">
+                              Table <strong>{selectedSeat?.label}</strong> is reserved for <strong>{guestCount} people</strong>.
+                          </p>
                           <Button 
                               onClick={() => router.push('/tickets')}
                               className="w-full h-14 rounded-2xl bg-blue-600 text-white font-bold text-lg shadow-lg shadow-blue-200 mt-6"
                           >
-                              View in Wallet
+                              Open Wallet
                           </Button>
                       </div>
                   )}

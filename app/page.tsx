@@ -1,13 +1,13 @@
 "use client"
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { supabase } from '@/lib/supabaseClient' // We will use this to fetch dynamic assets later
 import { Button } from '@/components/ui/button'
-import { ArrowRight, Minus, Plus, Users } from 'lucide-react'
+import { ArrowRight, Minus, Plus } from 'lucide-react'
 
-// --- 1. ASSETS CONFIGURATION (Premium Static Images) ---
-// Using high-quality Unsplash IDs for a premium look
-const VIBE_ASSETS = {
+// Default Assets (Fallbacks if DB is empty)
+const DEFAULT_ASSETS = {
   club: {
     image: "https://images.unsplash.com/photo-1566737236500-c8ac43014a67?q=80&w=1920&auto=format&fit=crop",
     headline: "Own the Night.",
@@ -30,60 +30,74 @@ const VIBE_ASSETS = {
   }
 }
 
-type VibeType = keyof typeof VIBE_ASSETS;
+type VibeType = keyof typeof DEFAULT_ASSETS;
 
 export default function LandingPage() {
   const router = useRouter()
   const [guestCount, setGuestCount] = useState(2)
   const [selectedVibe, setSelectedVibe] = useState<VibeType>('club')
   const [isImageLoaded, setIsImageLoaded] = useState(false)
+  
+  // State for dynamic assets
+  const [assets, setAssets] = useState(DEFAULT_ASSETS)
+
+  // Fetch 'God Mode' assets from DB
+  useEffect(() => {
+    const loadAssets = async () => {
+        const { data } = await supabase.from('cms_assets').select('*')
+        if (data && data.length > 0) {
+            const newAssets = { ...DEFAULT_ASSETS }
+            // Map DB rows to our asset structure
+            data.forEach(item => {
+                if (item.id === 'home_club_img') newAssets.club.image = item.content
+                if (item.id === 'home_club_txt') newAssets.club.headline = item.content
+                // Add mapping for others as needed
+            })
+            setAssets(newAssets)
+        }
+    }
+    loadAssets()
+  }, [])
 
   const handleSearch = () => {
     router.push(`/explore?vibe=${selectedVibe}&guests=${guestCount}`)
   }
 
   return (
-    // --- FIX ALIGNMENT: Changed 'justify-end' to 'justify-center' and added padding ---
     <div className="h-screen w-full bg-black font-sans relative overflow-hidden flex flex-col justify-center pb-20">
       
-      {/* --- 2. DYNAMIC PREMIUM BACKGROUND --- */}
+      {/* BACKGROUND */}
       <div className="absolute inset-0 z-0">
-         {/* Darker Gradient Overlay for better text contrast */}
          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-black/30 z-20" />
-         
-         {/* Replaced Video with Image tag with smooth transition */}
          <img 
-            src={VIBE_ASSETS[selectedVibe].image}
+            src={assets[selectedVibe].image}
             alt={selectedVibe}
-            key={selectedVibe} // Forces re-render for transition effect
+            key={selectedVibe}
             onLoad={() => setIsImageLoaded(true)}
             className={`w-full h-full object-cover transition-all duration-700 transform scale-105 ${isImageLoaded ? 'opacity-100 blur-0' : 'opacity-0 blur-lg'}`}
          />
       </div>
 
-      {/* --- 3. FLOATING UI LAYER --- */}
+      {/* FLOATING UI */}
       <div className="relative z-30 w-full max-w-md mx-auto px-6 flex flex-col gap-8 mt-20">
           
-          {/* DYNAMIC TEXT */}
           <div className="space-y-2 animate-in slide-in-from-bottom-8 duration-700">
               <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-md px-3 py-1 rounded-full border border-white/10 mb-2">
                   <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
                   <span className="text-[10px] font-bold text-white uppercase tracking-widest">Dimapur Live</span>
               </div>
               <h1 className="text-6xl font-black text-white leading-none tracking-tighter drop-shadow-2xl">
-                  {VIBE_ASSETS[selectedVibe].headline}
+                  {assets[selectedVibe].headline}
               </h1>
               <p className="text-white/90 text-lg font-medium tracking-wide">
-                  {VIBE_ASSETS[selectedVibe].sub}
+                  {assets[selectedVibe].sub}
               </p>
           </div>
 
-          {/* THE "ISLAND" CONTROLLER */}
           <div className="bg-black/60 backdrop-blur-xl border border-white/10 p-2 rounded-[2.5rem] shadow-2xl animate-in slide-in-from-bottom-4 duration-700 delay-100">
               
-              {/* Vibe Tabs */}
               <div className="flex justify-between items-center p-1 bg-white/5 rounded-[2rem] mb-2 relative">
-                  {(Object.keys(VIBE_ASSETS) as Array<VibeType>).map((vibe) => (
+                  {(Object.keys(DEFAULT_ASSETS) as Array<VibeType>).map((vibe) => (
                       <button 
                         key={vibe}
                         onClick={() => setSelectedVibe(vibe)}
@@ -94,16 +108,13 @@ export default function LandingPage() {
                   ))}
               </div>
 
-              {/* Action Bar */}
               <div className="flex gap-2 p-1">
-                  {/* Guest Counter */}
                   <div className="flex items-center gap-3 bg-white/5 rounded-[1.8rem] px-6 w-1/3 justify-between border border-white/5">
                       <button onClick={() => setGuestCount(Math.max(1, guestCount - 1))} className="text-white/50 hover:text-white active:scale-90 transition-transform"><Minus className="w-5 h-5"/></button>
                       <span className="text-white font-black text-lg">{guestCount}</span>
                       <button onClick={() => setGuestCount(Math.min(10, guestCount + 1))} className="text-white/50 hover:text-white active:scale-90 transition-transform"><Plus className="w-5 h-5"/></button>
                   </div>
 
-                  {/* The "Let's Go" Button */}
                   <Button 
                     onClick={handleSearch}
                     className="flex-1 h-16 bg-white text-black font-black text-lg rounded-[1.8rem] hover:bg-slate-200 transition-all active:scale-95 group shadow-[0_0_20px_rgba(255,255,255,0.3)]"
@@ -115,24 +126,9 @@ export default function LandingPage() {
                   </Button>
               </div>
           </div>
-
       </div>
-
-      {/* --- 4. TOP NAV --- */}
-      <div className="fixed top-0 left-0 w-full p-6 flex justify-between items-center z-50">
-          {/* Replaced text with Logo Image for premium feel */}
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-white rounded-xl flex items-center justify-center shadow-lg">
-                <div className="w-4 h-4 bg-black rounded-full" />
-            </div>
-            <span className="text-white font-black text-xl tracking-tighter drop-shadow-lg">SeatSpot.</span>
-          </div>
-          
-          <Button variant="ghost" onClick={() => router.push('/profile')} className="text-white bg-white/10 hover:bg-white/20 rounded-full font-bold uppercase text-xs tracking-widest border border-white/10 px-4 h-10 backdrop-blur-md shadow-lg">
-              <Users className="w-4 h-4 mr-2" /> My ID
-          </Button>
-      </div>
-
+      
+      {/* NO INTERNAL HEADER HERE - FIXES DUPLICATE LOGO */}
     </div>
   )
 }

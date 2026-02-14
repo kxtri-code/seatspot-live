@@ -1,133 +1,173 @@
 "use client"
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { motion, AnimatePresence } from 'framer-motion'
-import { Coffee, Martini, Utensils, ArrowRight, Users, Sparkles } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabaseClient'
+import { Loader2, Users, CheckCircle, XCircle, RefreshCw, LogOut, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { useRouter } from 'next/navigation'
 
-export default function VibeGate() {
+export default function AdminDashboard() {
   const router = useRouter()
-  const [step, setStep] = useState(1)
-  const [vibe, setVibe] = useState('')
-  const [pax, setPax] = useState(2)
-  const [videoLoaded, setVideoLoaded] = useState(false)
+  const [tickets, setTickets] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [stats, setStats] = useState({ total: 0, checkedIn: 0, revenue: 0 })
+  const [search, setSearch] = useState('')
 
-  useEffect(() => { setVideoLoaded(true) }, [])
+  const fetchBookings = async () => {
+    setLoading(true)
+    // In a real app, you'd filter by the logged-in venue owner's ID
+    // For this demo, we fetch ALL tickets so you can see your test data
+    const { data, error } = await supabase
+      .from('tickets')
+      .select('*')
+      .order('created_at', { ascending: false })
 
-  const vibes = [
-    { id: 'cafe', label: 'Chill Cafe', icon: Coffee, desc: 'Cozy vibes & good coffee' },
-    { id: 'club', label: 'Night Club', icon: Martini, desc: 'High energy & beats' },
-    { id: 'restaurant', label: 'Fine Dining', icon: Utensils, desc: 'Exquisite flavors' },
-  ]
-
-  const handleNext = () => {
-    if (step === 1 && vibe) setStep(2)
-    else if (step === 2) router.push(`/explore?vibe=${vibe}&pax=${pax}`)
+    if (data) {
+        setTickets(data)
+        
+        // Calculate Stats
+        const checkedInCount = data.filter(t => t.status === 'used').length
+        // Assuming average revenue per head is approx ₹500 for demo logic
+        const rev = data.reduce((acc, curr) => acc + (curr.admit_count * 500), 0)
+        
+        setStats({
+            total: data.reduce((acc, curr) => acc + curr.admit_count, 0),
+            checkedIn: checkedInCount,
+            revenue: rev
+        })
+    }
+    setLoading(false)
   }
 
-  return (
-    <div className="h-[100dvh] w-screen overflow-hidden relative flex flex-col items-center justify-center p-6 bg-black">
+  useEffect(() => {
+    fetchBookings()
+  }, [])
+
+  // HANDLER: Check In a Guest
+  const handleCheckIn = async (ticketId: string, currentStatus: string) => {
+      const newStatus = currentStatus === 'confirmed' ? 'used' : 'confirmed'
       
-      {/* 1. BACKGROUND VIDEO (Fixed & Optimized) */}
-      <div className="absolute inset-0 z-0">
-        <video 
-            autoPlay 
-            loop 
-            muted 
-            playsInline
-            poster="https://images.pexels.com/photos/1684187/pexels-photo-1684187.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1"
-            className={`w-full h-full object-cover transition-opacity duration-1000 ${videoLoaded ? 'opacity-50' : 'opacity-0'}`}
-        >
-            {/* Reliable Pexels Party Loop */}
-            <source src="https://videos.pexels.com/video-files/3191572/3191572-hd_1920_1080_25fps.mp4" type="video/mp4" />
-        </video>
-        {/* Dark Overlay */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-black/40 backdrop-blur-[1px]" />
+      // Update DB
+      const { error } = await supabase
+        .from('tickets')
+        .update({ status: newStatus })
+        .eq('id', ticketId)
+
+      if (!error) {
+          // Update Local State (Optimistic UI)
+          setTickets(prev => prev.map(t => 
+              t.id === ticketId ? { ...t, status: newStatus } : t
+          ))
+      }
+  }
+
+  // Filter Logic
+  const filteredTickets = tickets.filter(t => 
+      t.guest_name?.toLowerCase().includes(search.toLowerCase()) ||
+      t.id.includes(search)
+  )
+
+  return (
+    <div className="min-h-screen bg-slate-100 font-sans pb-20">
+      
+      {/* ADMIN HEADER */}
+      <div className="bg-slate-900 text-white p-6 pb-12">
+          <div className="flex justify-between items-center mb-6">
+              <h1 className="text-2xl font-black">SeatSpot Admin</h1>
+              <Button variant="ghost" size="icon" onClick={() => router.push('/explore')} className="text-white/50 hover:text-white hover:bg-white/10">
+                  <LogOut className="w-5 h-5" />
+              </Button>
+          </div>
+          
+          {/* STATS GRID */}
+          <div className="grid grid-cols-3 gap-4">
+              <div className="bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/5">
+                  <div className="text-white/60 text-[10px] font-bold uppercase tracking-widest mb-1">Guests</div>
+                  <div className="text-2xl font-black">{stats.total}</div>
+              </div>
+              <div className="bg-green-500/20 backdrop-blur-md p-4 rounded-2xl border border-green-500/30">
+                  <div className="text-green-200 text-[10px] font-bold uppercase tracking-widest mb-1">Checked In</div>
+                  <div className="text-2xl font-black text-green-100">{stats.checkedIn}</div>
+              </div>
+              <div className="bg-blue-500/20 backdrop-blur-md p-4 rounded-2xl border border-blue-500/30">
+                  <div className="text-blue-200 text-[10px] font-bold uppercase tracking-widest mb-1">Revenue</div>
+                  <div className="text-2xl font-black text-blue-100">₹{stats.revenue.toLocaleString()}</div>
+              </div>
+          </div>
       </div>
 
-      {/* 2. CONTENT */}
-      <div className="z-10 w-full max-w-md relative">
-        <motion.div 
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            className="bg-white/10 backdrop-blur-md border border-white/20 p-8 rounded-[40px] shadow-2xl"
-        >
-          
-          <div className="text-center mb-8">
-            <h1 className="text-4xl font-black text-white tracking-tight drop-shadow-xl">
-              What's the <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400">Vibe?</span>
-            </h1>
-            <p className="text-slate-300 text-sm mt-2 font-medium">Curated experiences for tonight.</p>
+      {/* GUEST LIST CONTAINER */}
+      <div className="px-4 -mt-6">
+          <div className="bg-white rounded-t-[2rem] min-h-[500px] shadow-xl border border-slate-200/60 p-6">
+              
+              {/* SEARCH BAR */}
+              <div className="relative mb-6">
+                  <Search className="absolute left-3 top-3.5 w-4 h-4 text-slate-400" />
+                  <Input 
+                    placeholder="Search guest name or ID..." 
+                    className="pl-10 h-12 rounded-xl bg-slate-50 border-slate-100"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+              </div>
+
+              {/* LIST HEADER */}
+              <div className="flex justify-between items-center mb-4">
+                  <h2 className="font-bold text-slate-900">Today's Guests</h2>
+                  <Button variant="ghost" size="sm" onClick={fetchBookings}>
+                      <RefreshCw className={`w-4 h-4 text-slate-400 ${loading ? 'animate-spin' : ''}`} />
+                  </Button>
+              </div>
+
+              {/* LOADING STATE */}
+              {loading && (
+                  <div className="py-20 flex justify-center">
+                      <Loader2 className="animate-spin text-slate-300 w-8 h-8" />
+                  </div>
+              )}
+
+              {/* TICKETS LIST */}
+              {!loading && (
+                  <div className="space-y-4">
+                      {filteredTickets.length > 0 ? filteredTickets.map((t) => (
+                          <div 
+                            key={t.id} 
+                            className={`p-4 rounded-2xl border transition-all ${t.status === 'used' ? 'bg-slate-50 border-slate-100 opacity-60' : 'bg-white border-slate-200 shadow-sm'}`}
+                          >
+                              <div className="flex justify-between items-center">
+                                  <div>
+                                      <h3 className="font-bold text-slate-900">{t.guest_name}</h3>
+                                      <p className="text-xs text-slate-500 font-medium">
+                                          {t.venue_name} • <span className="text-slate-900 font-bold">{t.seat_label || 'General'}</span>
+                                      </p>
+                                      <div className="flex items-center gap-2 mt-2">
+                                          <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-1 rounded-md font-bold">
+                                              {t.admit_count} Guests
+                                          </span>
+                                          <span className="text-[10px] text-slate-300 font-mono">
+                                              ID: {t.id.slice(0,6)}
+                                          </span>
+                                      </div>
+                                  </div>
+
+                                  {/* CHECK IN BUTTON */}
+                                  <button 
+                                    onClick={() => handleCheckIn(t.id, t.status)}
+                                    className={`w-12 h-12 rounded-full flex items-center justify-center transition-all active:scale-90 ${t.status === 'used' ? 'bg-green-100 text-green-600' : 'bg-slate-900 text-white shadow-lg'}`}
+                                  >
+                                      {t.status === 'used' ? <CheckCircle className="w-6 h-6" /> : <CheckCircle className="w-6 h-6 opacity-50" />}
+                                  </button>
+                              </div>
+                          </div>
+                      )) : (
+                          <div className="text-center py-10 text-slate-400">
+                              <p>No guests found.</p>
+                          </div>
+                      )}
+                  </div>
+              )}
           </div>
-
-          <AnimatePresence mode='wait'>
-            {step === 1 && (
-              <motion.div 
-                key="step1"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                className="grid gap-3"
-              >
-                {vibes.map((v) => (
-                  <button
-                    key={v.id}
-                    onClick={() => setVibe(v.id)}
-                    className={`group relative flex items-center gap-4 p-4 rounded-2xl transition-all border border-white/5 overflow-hidden
-                        ${vibe === v.id ? 'bg-white/20 border-white/40 shadow-lg' : 'bg-white/5 hover:bg-white/10'}`}
-                  >
-                    <div className={`p-3 rounded-full bg-gradient-to-br from-white/10 to-transparent border border-white/10 group-hover:scale-110 transition-transform`}>
-                      <v.icon className="w-5 h-5 text-white" />
-                    </div>
-                    <div className="text-left">
-                        <span className="block font-bold text-lg text-white">{v.label}</span>
-                        <span className="text-xs text-slate-400">{v.desc}</span>
-                    </div>
-                    {vibe === v.id && <ArrowRight className="ml-auto text-white animate-pulse"/>}
-                  </button>
-                ))}
-              </motion.div>
-            )}
-
-            {step === 2 && (
-              <motion.div 
-                key="step2"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                className="text-center space-y-8 py-4"
-              >
-                 <div className="space-y-2">
-                     <p className="text-slate-400 text-sm uppercase tracking-widest font-bold">Party Size</p>
-                     <div className="flex items-center justify-center gap-2">
-                        <Users className="w-5 h-5 text-purple-400" />
-                        <span className="text-6xl font-black text-white">{pax}</span>
-                     </div>
-                 </div>
-
-                 <div className="flex justify-center gap-6">
-                    <button onClick={() => setPax(Math.max(1, pax - 1))} className="w-16 h-16 rounded-full border border-white/20 bg-white/5 text-white text-2xl font-bold hover:bg-white/20 active:scale-95 transition-all">-</button>
-                    <button onClick={() => setPax(pax + 1)} className="w-16 h-16 rounded-full border border-white/20 bg-white/5 text-white text-2xl font-bold hover:bg-white/20 active:scale-95 transition-all">+</button>
-                 </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <Button 
-            onClick={handleNext}
-            disabled={!vibe}
-            className={`w-full mt-8 h-16 rounded-2xl text-lg font-bold shadow-xl transition-all
-                ${!vibe ? 'bg-white/10 text-white/50' : 'bg-white text-black hover:scale-[1.02] shadow-white/10'}`}
-          >
-            {step === 1 ? "Continue" : "Find My Spot"}
-          </Button>
-
-          {step === 2 && (
-              <button onClick={() => setStep(1)} className="w-full text-center mt-4 text-xs text-slate-400 hover:text-white transition-colors">Go Back</button>
-          )}
-
-        </motion.div>
       </div>
     </div>
   )

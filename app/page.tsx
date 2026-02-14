@@ -1,88 +1,115 @@
 "use client"
 
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { ArrowRight, MapPin, Music, Coffee, Utensils } from 'lucide-react'
+import { ArrowRight, Users, Music, Coffee, Utensils, Martini } from 'lucide-react'
 
 export default function LandingPage() {
   const router = useRouter()
+  const [guestCount, setGuestCount] = useState(2)
+  const [selectedVibe, setSelectedVibe] = useState('club')
+  const [isVideoLoaded, setIsVideoLoaded] = useState(false)
+
+  // Vibe Options Configuration
+  const vibes = [
+    { id: 'club', label: 'Club', icon: <Music className="w-5 h-5"/>, desc: 'Party & Dance' },
+    { id: 'cafe', label: 'Cafe', icon: <Coffee className="w-5 h-5"/>, desc: 'Chill & Work' },
+    { id: 'dining', label: 'Dining', icon: <Utensils className="w-5 h-5"/>, desc: 'Food & Drinks' },
+    { id: 'lounge', label: 'Lounge', icon: <Martini className="w-5 h-5"/>, desc: 'Relax & Vibe' },
+  ]
+
+  const handleSearch = () => {
+    router.push(`/explore?vibe=${selectedVibe}&guests=${guestCount}`)
+  }
 
   return (
-    <div className="min-h-screen bg-white font-sans selection:bg-blue-100">
+    <div className="min-h-screen bg-black font-sans relative overflow-hidden flex flex-col justify-end pb-10">
       
-      {/* HERO SECTION */}
-      <div className="relative h-[65vh] overflow-hidden rounded-b-[3rem] bg-slate-900">
-        <img 
-            src="https://images.unsplash.com/photo-1492684223066-81342ee5ff30?q=80&w=2070&auto=format&fit=crop" 
-            className="absolute inset-0 w-full h-full object-cover opacity-60"
-            alt="Nightlife"
-        />
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent" />
-        
-        <div className="absolute bottom-0 left-0 w-full p-8 pb-12">
-            <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-md px-3 py-1 rounded-full border border-white/20 mb-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
-                <MapPin className="w-3 h-3 text-red-400" />
-                <span className="text-xs font-bold text-white uppercase tracking-widest">Dimapur, NL</span>
-            </div>
-            <h1 className="text-5xl font-black text-white leading-none mb-4 tracking-tight animate-in fade-in slide-in-from-bottom-4 duration-700 delay-100">
-                Find Your <br/>
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400">Vibe Tonight.</span>
-            </h1>
-            <p className="text-slate-300 text-lg mb-8 max-w-xs animate-in fade-in slide-in-from-bottom-4 duration-700 delay-200">
-                Book tables at the hottest cafes, clubs, and lounges in seconds.
-            </p>
-            <Button 
-                onClick={() => router.push('/explore')}
-                className="h-14 px-8 rounded-full bg-white text-slate-900 font-black text-lg hover:bg-slate-100 transition-all active:scale-95 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-300 shadow-xl shadow-white/10"
-            >
-                Start Exploring <ArrowRight className="ml-2 w-5 h-5" />
-            </Button>
-        </div>
+      {/* BACKGROUND VIDEO */}
+      <div className="absolute inset-0 z-0">
+         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-black/20 z-10" />
+         <video 
+            autoPlay 
+            loop 
+            muted 
+            playsInline
+            onLoadedData={() => setIsVideoLoaded(true)}
+            className={`w-full h-full object-cover transition-opacity duration-1000 ${isVideoLoaded ? 'opacity-100' : 'opacity-0'}`}
+         >
+             {/* A high-quality, royalty-free nightlife/dining loop */}
+             <source src="https://assets.mixkit.co/videos/preview/mixkit-friends-with-colored-lights-having-fun-at-a-party-41398-large.mp4" type="video/mp4" />
+         </video>
       </div>
 
-      {/* QUICK CATEGORIES */}
-      <div className="p-8 pb-20">
-          <h2 className="text-xl font-black text-slate-900 mb-6 flex items-center gap-2">
-              Browse by Mood
-          </h2>
-          <div className="grid grid-cols-2 gap-4">
-              <div onClick={() => router.push('/explore?vibe=cafe')} className="bg-orange-50 p-6 rounded-[2rem] border border-orange-100 cursor-pointer active:scale-95 transition-transform">
-                  <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center mb-3">
-                      <Coffee className="w-5 h-5 text-orange-600" />
-                  </div>
-                  <h3 className="font-bold text-slate-900 text-lg">Cafes</h3>
-                  <p className="text-xs text-slate-500 font-medium">Chill & Work</p>
-              </div>
-              <div onClick={() => router.push('/explore?vibe=club')} className="bg-purple-50 p-6 rounded-[2rem] border border-purple-100 cursor-pointer active:scale-95 transition-transform">
-                  <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center mb-3">
-                      <Music className="w-5 h-5 text-purple-600" />
-                  </div>
-                  <h3 className="font-bold text-slate-900 text-lg">Clubs</h3>
-                  <p className="text-xs text-slate-500 font-medium">Party Hard</p>
-              </div>
-              <div onClick={() => router.push('/explore?vibe=restaurant')} className="bg-blue-50 p-6 rounded-[2rem] border border-blue-100 col-span-2 cursor-pointer active:scale-95 transition-transform flex items-center justify-between">
-                  <div>
-                    <h3 className="font-bold text-slate-900 text-lg">Fine Dining</h3>
-                    <p className="text-xs text-slate-500 font-medium">Dates & Family</p>
-                  </div>
-                  <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                      <Utensils className="w-6 h-6 text-blue-600" />
-                  </div>
-              </div>
+      {/* CONTENT LAYER */}
+      <div className="relative z-20 px-6 w-full max-w-md mx-auto">
+          
+          {/* HEADER */}
+          <div className="mb-8 animate-in slide-in-from-bottom-8 duration-700">
+              <h1 className="text-5xl font-black text-white leading-none mb-2 tracking-tighter">
+                  What's <br/>
+                  <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">
+                      Your Vibe?
+                  </span>
+              </h1>
+              <p className="text-slate-300 text-lg font-medium">Tonight belongs to you.</p>
           </div>
+
+          {/* INTERACTIVE SELECTOR CARD */}
+          <div className="bg-white/10 backdrop-blur-xl border border-white/20 p-6 rounded-[2.5rem] shadow-2xl animate-in slide-in-from-bottom-4 duration-700 delay-100">
+              
+              {/* 1. VIBE SELECTOR */}
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">Choose Mood</label>
+              <div className="grid grid-cols-4 gap-2 mb-6">
+                  {vibes.map((v) => (
+                      <button 
+                        key={v.id}
+                        onClick={() => setSelectedVibe(v.id)}
+                        className={`flex flex-col items-center justify-center py-3 rounded-2xl transition-all active:scale-95 ${selectedVibe === v.id ? 'bg-white text-black shadow-lg scale-105' : 'bg-black/40 text-white/70 hover:bg-black/60'}`}
+                      >
+                          {v.icon}
+                          <span className="text-[10px] font-bold mt-1">{v.label}</span>
+                      </button>
+                  ))}
+              </div>
+
+              {/* 2. GUEST COUNTER */}
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 block">Party Size</label>
+              <div className="flex items-center justify-between bg-black/40 rounded-2xl p-2 mb-6 border border-white/5">
+                  <button 
+                    onClick={() => setGuestCount(Math.max(1, guestCount - 1))}
+                    className="w-10 h-10 rounded-xl bg-white/10 text-white flex items-center justify-center hover:bg-white/20 transition-colors"
+                  >
+                      -
+                  </button>
+                  <div className="flex flex-col items-center">
+                      <span className="text-xl font-black text-white">{guestCount}</span>
+                      <span className="text-[8px] text-slate-400 uppercase font-bold tracking-widest">People</span>
+                  </div>
+                  <button 
+                    onClick={() => setGuestCount(Math.min(20, guestCount + 1))}
+                    className="w-10 h-10 rounded-xl bg-white text-black flex items-center justify-center hover:bg-white/90 transition-colors"
+                  >
+                      +
+                  </button>
+              </div>
+
+              {/* 3. GO BUTTON */}
+              <Button 
+                onClick={handleSearch}
+                className="w-full h-14 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white font-black text-lg rounded-2xl shadow-lg shadow-purple-900/50 transition-all active:scale-95"
+              >
+                  Find Places <ArrowRight className="ml-2 w-5 h-5" />
+              </Button>
+          </div>
+
       </div>
 
-      {/* BOTTOM NAV (Simple) */}
-      <div className="fixed bottom-0 left-0 w-full bg-white border-t border-slate-100 p-4 flex justify-around items-center z-50 pb-6">
-          <Button variant="ghost" onClick={() => router.push('/')} className="flex flex-col items-center gap-1 h-auto py-2 text-slate-900">
-              <div className="w-1 h-1 bg-slate-900 rounded-full mb-1" />
-              <span className="text-[10px] font-bold uppercase tracking-widest">Home</span>
-          </Button>
-          <Button variant="ghost" onClick={() => router.push('/tickets')} className="flex flex-col items-center gap-1 h-auto py-2 text-slate-400 hover:text-slate-900">
-              <span className="text-[10px] font-bold uppercase tracking-widest">Wallet</span>
-          </Button>
-          <Button variant="ghost" onClick={() => router.push('/profile')} className="flex flex-col items-center gap-1 h-auto py-2 text-slate-400 hover:text-slate-900">
-              <span className="text-[10px] font-bold uppercase tracking-widest">Profile</span>
+      {/* BOTTOM NAV (Transparent) */}
+      <div className="fixed top-0 right-0 p-4 z-50">
+          <Button variant="ghost" onClick={() => router.push('/profile')} className="text-white/80 hover:text-white hover:bg-white/10 rounded-full">
+              <span className="text-xs font-bold uppercase tracking-widest mr-2">Login</span> <Users className="w-5 h-5" />
           </Button>
       </div>
 

@@ -1,10 +1,14 @@
 "use client"
 
-import { useRouter } from 'next/navigation'
-import UserAvatar from '@/components/UserAvatar' // Import the new component
+import { usePathname, useRouter } from 'next/navigation'
+import UserAvatar from '@/components/UserAvatar'
 
 export default function Header() {
   const router = useRouter()
+  const pathname = usePathname()
+
+  // --- THE FIX: HIDE HEADER ON HOME PAGE ---
+  if (pathname === '/') return null
 
   return (
     <header className="fixed top-0 left-0 right-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-100 px-6 h-16 flex items-center justify-between">
@@ -24,7 +28,7 @@ export default function Header() {
         <button onClick={() => router.push('/tickets')} className="text-sm font-bold text-slate-500 hover:text-slate-900 transition-colors">Wallet</button>
       </nav>
 
-      {/* NEW: PROFILE AVATAR (Top Right) */}
+      {/* PROFILE AVATAR */}
       <div className="flex items-center gap-4">
         <UserAvatar className="w-9 h-9" />
       </div>

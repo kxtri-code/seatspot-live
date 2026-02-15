@@ -3,205 +3,264 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import { useRouter } from 'next/navigation'
-import { Loader2, User, Save, LogOut, Camera, Mail, ShieldCheck } from 'lucide-react'
+import { Loader2, User, Save, LogOut, Camera, Mail, Shield, Bell, Key, Wallet, Sparkles, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 
 export default function Profile() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
-  const [uploading, setUploading] = useState(false)
+  const [saving, setSaving] = useState(false)
   
-  // User Data
+  // Data State
   const [user, setUser] = useState<any>(null)
-  const [fullname, setFullname] = useState<string>('')
-  const [username, setUsername] = useState<string>('')
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
+  const [profile, setProfile] = useState({
+    full_name: '',
+    username: '',
+    avatar_url: '',
+    marketing_opt_in: false,
+    website: ''
+  })
+  const [walletBalance, setWalletBalance] = useState(0)
 
-  // 1. Fetch Profile on Load
+  // Fetch Data
   const getProfile = useCallback(async () => {
     try {
-      setLoading(true)
       const { data: { user } } = await supabase.auth.getUser()
-
-      if (!user) {
-         router.replace('/login') // Redirect if not logged in
-         return
-      }
+      if (!user) return router.replace('/login')
 
       setUser(user)
 
-      // Fetch profile data
-      const { data, error, status } = await supabase
-        .from('profiles')
-        .select(`full_name, username, avatar_url`)
-        .eq('id', user.id)
-        .single()
+      // Parallel Fetch: Profile + Wallet
+      const [profileData, walletData] = await Promise.all([
+          supabase.from('profiles').select('*').eq('id', user.id).single(),
+          supabase.from('wallets').select('balance').eq('user_id', user.id).single()
+      ])
 
-      if (data) {
-        setFullname(data.full_name || '')
-        setUsername(data.username || '')
-        setAvatarUrl(data.avatar_url)
+      if (profileData.data) {
+          setProfile({
+              full_name: profileData.data.full_name || '',
+              username: profileData.data.username || '',
+              avatar_url: profileData.data.avatar_url || '',
+              marketing_opt_in: profileData.data.marketing_opt_in || false,
+              website: ''
+          })
       }
+      if (walletData.data) setWalletBalance(walletData.data.balance)
+
     } catch (error) {
-      console.error('Error loading user data:', error)
+      console.error('Error:', error)
     } finally {
       setLoading(false)
     }
   }, [router])
 
-  useEffect(() => {
-    getProfile()
-  }, [getProfile])
+  useEffect(() => { getProfile() }, [getProfile])
 
-  // 2. The "Magic" Update Function (Uses Upsert)
-  async function updateProfile() {
-    try {
-      setLoading(true)
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('No user logged in')
-
-      const updates = {
-        id: user.id, // Required for Upsert
-        full_name: fullname,
-        username,
-        avatar_url: avatarUrl,
-        updated_at: new Date().toISOString(),
+  // Handlers
+  const handleSave = async () => {
+      setSaving(true)
+      try {
+          const updates = {
+              id: user.id,
+              ...profile,
+              updated_at: new Date().toISOString(),
+          }
+          // The fix: UPSERT handles both new and existing profiles
+          const { error } = await supabase.from('profiles').upsert(updates)
+          if (error) throw error
+          alert("Settings Saved ✨")
+      } catch (err: any) {
+          alert(err.message)
+      } finally {
+          setSaving(false)
       }
-
-      // ERROR FIX: .upsert() handles both creating AND updating
-      const { error } = await supabase.from('profiles').upsert(updates)
-
-      if (error) throw error
-      alert('Profile updated successfully! ✅')
-      
-    } catch (error: any) {
-      alert('Error updating profile: ' + error.message)
-    } finally {
-      setLoading(false)
-    }
   }
 
-  // 3. Avatar Uploader
-  const uploadAvatar = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    try {
-      setUploading(true)
-
-      if (!event.target.files || event.target.files.length === 0) {
-        throw new Error('You must select an image to upload.')
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (!e.target.files?.[0]) return
+      setSaving(true)
+      try {
+          const file = e.target.files[0]
+          const fileExt = file.name.split('.').pop()
+          const fileName = `${user.id}-${Math.random()}.${fileExt}`
+          const { error } = await supabase.storage.from('stories').upload(fileName, file)
+          if (error) throw error
+          
+          const { data } = supabase.storage.from('stories').getPublicUrl(fileName)
+          setProfile(prev => ({ ...prev, avatar_url: data.publicUrl }))
+          
+          // Auto-save after upload
+          await supabase.from('profiles').upsert({ 
+              id: user.id, 
+              avatar_url: data.publicUrl,
+              updated_at: new Date().toISOString()
+          })
+      } catch (err: any) {
+          alert("Upload failed: " + err.message)
+      } finally {
+          setSaving(false)
       }
-
-      const file = event.target.files[0]
-      const fileExt = file.name.split('.').pop()
-      const fileName = `${Math.random()}.${fileExt}`
-      const filePath = `${fileName}`
-
-      // Upload to 'avatars' bucket (Make sure this bucket exists in Supabase Storage!)
-      // If 'avatars' bucket doesn't exist, create it or change this to 'stories' temporarily
-      const { error: uploadError } = await supabase.storage.from('stories').upload(filePath, file)
-
-      if (uploadError) throw uploadError
-      
-      const { data } = supabase.storage.from('stories').getPublicUrl(filePath)
-      setAvatarUrl(data.publicUrl)
-
-    } catch (error: any) {
-      alert('Upload failed: ' + error.message)
-    } finally {
-      setUploading(false)
-    }
   }
 
-  const handleSignOut = async () => {
-    await supabase.auth.signOut()
-    router.refresh()
-    router.replace('/')
+  const handlePasswordReset = async () => {
+      const email = prompt("Confirm your email to receive a reset link:")
+      if(email) {
+          await supabase.auth.resetPasswordForEmail(email)
+          alert("Check your inbox for the reset link!")
+      }
   }
 
-  if (loading) return <div className="h-screen flex items-center justify-center bg-slate-50"><Loader2 className="animate-spin w-8 h-8 text-slate-900" /></div>
+  if (loading) return <div className="h-screen flex items-center justify-center bg-slate-50"><Loader2 className="animate-spin text-slate-900"/></div>
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-20 font-sans">
-        
-        {/* Header */}
-        <div className="bg-white border-b border-slate-100 p-6 sticky top-0 z-10 flex justify-between items-center">
-            <h1 className="text-xl font-black text-slate-900">My Profile</h1>
-            <Button variant="ghost" size="sm" onClick={handleSignOut} className="text-red-500 hover:bg-red-50 font-bold">
-                <LogOut className="w-4 h-4 mr-2" /> Sign Out
-            </Button>
-        </div>
+    <div className="min-h-screen bg-slate-50 font-sans pb-20">
+      
+      {/* 1. HEADER (Glassmorphism) */}
+      <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-xl border-b border-slate-200 px-6 py-4 flex justify-between items-center">
+          <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
+                  <Sparkles className="w-4 h-4 text-white" />
+              </div>
+              <h1 className="text-lg font-black text-slate-900 tracking-tight">Account Center</h1>
+          </div>
+          <Button variant="ghost" onClick={async () => { await supabase.auth.signOut(); router.push('/'); }} className="text-red-500 hover:bg-red-50 hover:text-red-600 font-bold text-xs uppercase tracking-widest">
+              Log Out <LogOut className="w-3 h-3 ml-2" />
+          </Button>
+      </div>
 
-        <div className="max-w-md mx-auto p-6 space-y-8">
-            
-            {/* Avatar Section */}
-            <div className="flex flex-col items-center">
-                <div className="relative group">
-                    <div className="w-32 h-32 rounded-full border-4 border-white shadow-xl overflow-hidden bg-slate-200">
-                        {avatarUrl ? (
-                            <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+      <div className="max-w-5xl mx-auto p-6 grid grid-cols-1 md:grid-cols-3 gap-6 animate-in slide-in-from-bottom-4 duration-500">
+          
+          {/* COL 1: IDENTITY CARD (Tall) */}
+          <div className="md:col-span-1 bg-white rounded-[2rem] p-6 border border-slate-100 shadow-xl shadow-slate-200/50 flex flex-col items-center relative overflow-hidden group">
+              {/* Background Decoration */}
+              <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-br from-blue-600 to-purple-600 opacity-10 group-hover:opacity-20 transition-opacity" />
+              
+              <div className="relative mt-8 mb-4">
+                  <div className="w-32 h-32 rounded-full p-1 bg-white shadow-2xl">
+                    <div className="w-full h-full rounded-full overflow-hidden bg-slate-100 relative">
+                        {profile.avatar_url ? (
+                            <img src={profile.avatar_url} className="w-full h-full object-cover" />
                         ) : (
-                            <User className="w-full h-full p-6 text-slate-400" />
+                            <User className="w-full h-full p-6 text-slate-300" />
                         )}
                     </div>
-                    <label className="absolute bottom-0 right-0 bg-blue-600 text-white p-2 rounded-full cursor-pointer shadow-lg hover:bg-blue-500 transition-colors">
-                        {uploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Camera className="w-5 h-5" />}
-                        <input type="file" className="hidden" accept="image/*" onChange={uploadAvatar} disabled={uploading} />
-                    </label>
-                </div>
-                <p className="mt-4 text-xs font-bold text-slate-400 uppercase tracking-widest">{user?.email}</p>
-            </div>
+                  </div>
+                  <label className="absolute bottom-0 right-0 w-10 h-10 bg-black text-white rounded-full flex items-center justify-center cursor-pointer hover:scale-110 transition-transform shadow-lg border-2 border-white">
+                      {saving ? <Loader2 className="w-4 h-4 animate-spin"/> : <Camera className="w-4 h-4" />}
+                      <input type="file" className="hidden" accept="image/*" onChange={handleAvatarUpload} disabled={saving} />
+                  </label>
+              </div>
 
-            {/* Form Section */}
-            <div className="space-y-4 bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100">
-                <div className="space-y-2">
-                    <Label htmlFor="email" className="text-xs font-bold uppercase text-slate-400">Email</Label>
-                    <div className="flex items-center gap-2 px-4 py-3 bg-slate-50 rounded-xl border border-slate-100 text-slate-500 cursor-not-allowed">
-                        <Mail className="w-4 h-4" />
-                        <span className="text-sm font-bold">{user?.email}</span>
-                    </div>
-                </div>
+              <h2 className="text-2xl font-black text-slate-900 text-center mb-1">{profile.full_name || 'Anonymous User'}</h2>
+              <p className="text-slate-400 font-bold text-sm mb-6">@{profile.username || 'username'}</p>
 
-                <div className="space-y-2">
-                    <Label htmlFor="fullname" className="text-xs font-bold uppercase text-slate-400">Full Name</Label>
-                    <Input 
-                        id="fullname" 
-                        value={fullname} 
-                        onChange={(e) => setFullname(e.target.value)} 
-                        className="h-12 rounded-xl border-slate-200 font-bold"
-                        placeholder="e.g. John Doe"
-                    />
-                </div>
+              {/* Wallet Mini-Card */}
+              <div className="w-full bg-slate-900 rounded-2xl p-4 text-white mb-6 relative overflow-hidden">
+                  <div className="absolute -right-4 -top-4 w-16 h-16 bg-white/10 rounded-full blur-xl" />
+                  <div className="flex justify-between items-center mb-2">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Wallet Balance</span>
+                      <Wallet className="w-4 h-4 text-green-400" />
+                  </div>
+                  <div className="text-3xl font-black tracking-tight">₹{walletBalance.toLocaleString()}</div>
+                  <Button variant="link" onClick={() => router.push('/tickets')} className="text-green-400 text-xs p-0 h-auto mt-2 font-bold hover:text-green-300">View History &rarr;</Button>
+              </div>
 
-                <div className="space-y-2">
-                    <Label htmlFor="username" className="text-xs font-bold uppercase text-slate-400">Username / Handle</Label>
-                    <Input 
-                        id="username" 
-                        value={username} 
-                        onChange={(e) => setUsername(e.target.value)} 
-                        className="h-12 rounded-xl border-slate-200 font-bold"
-                        placeholder="e.g. @johnny"
-                    />
-                </div>
+              <div className="w-full border-t border-slate-100 pt-6 mt-auto">
+                 <div className="flex items-center gap-3 text-slate-500 mb-2">
+                     <Mail className="w-4 h-4" />
+                     <span className="text-xs font-bold truncate">{user?.email}</span>
+                 </div>
+                 <div className="flex items-center gap-3 text-slate-500">
+                     <Shield className="w-4 h-4" />
+                     <span className="text-xs font-bold">Verified Member</span>
+                 </div>
+              </div>
+          </div>
 
-                <Button 
-                    onClick={updateProfile} 
-                    disabled={loading} 
-                    className="w-full h-14 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-lg shadow-lg mt-4"
-                >
-                    {loading ? <Loader2 className="animate-spin mr-2" /> : <Save className="w-5 h-5 mr-2" />}
-                    Save Changes
-                </Button>
-            </div>
+          {/* COL 2 & 3: SETTINGS GRID */}
+          <div className="md:col-span-2 space-y-6">
+              
+              {/* 1. PERSONAL DETAILS (Wide Card) */}
+              <div className="bg-white rounded-[2rem] p-8 border border-slate-100 shadow-sm">
+                  <h3 className="text-lg font-black text-slate-900 mb-6 flex items-center gap-2">
+                      <User className="w-5 h-5 text-blue-600" /> Personal Details
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                          <Label className="text-xs font-bold uppercase text-slate-400">Full Name</Label>
+                          <Input 
+                            value={profile.full_name} 
+                            onChange={(e) => setProfile({...profile, full_name: e.target.value})} 
+                            className="h-12 bg-slate-50 border-slate-100 focus:bg-white transition-all font-bold"
+                          />
+                      </div>
+                      <div className="space-y-2">
+                          <Label className="text-xs font-bold uppercase text-slate-400">Username</Label>
+                          <Input 
+                            value={profile.username} 
+                            onChange={(e) => setProfile({...profile, username: e.target.value})} 
+                            className="h-12 bg-slate-50 border-slate-100 focus:bg-white transition-all font-bold"
+                            placeholder="@handle"
+                          />
+                      </div>
+                  </div>
+              </div>
 
-             {/* Admin Link (Only visible if you want to quick-link it) */}
-             <div className="text-center">
-                <Button variant="link" onClick={() => router.push('/super-admin')} className="text-slate-300 text-xs uppercase tracking-widest hover:text-blue-600">
-                    <ShieldCheck className="w-3 h-3 mr-1" /> Admin Access
-                </Button>
-             </div>
+              {/* 2. SPLIT ROW: PREFERENCES & SECURITY */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  
+                  {/* Marketing Preferences */}
+                  <div className="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm flex flex-col justify-between">
+                      <div>
+                          <h3 className="font-bold text-slate-900 mb-2 flex items-center gap-2">
+                              <Bell className="w-4 h-4 text-purple-500" /> Notifications
+                          </h3>
+                          <p className="text-xs text-slate-500 font-medium leading-relaxed mb-6">
+                              Receive exclusive offers, venue updates, and party invites directly to your inbox.
+                          </p>
+                      </div>
+                      <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl">
+                          <span className="text-sm font-bold text-slate-700">Email Marketing</span>
+                          <Switch 
+                            checked={profile.marketing_opt_in}
+                            onCheckedChange={(v) => setProfile({...profile, marketing_opt_in: v})}
+                          />
+                      </div>
+                  </div>
 
-        </div>
+                  {/* Security */}
+                  <div className="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm flex flex-col justify-between">
+                      <div>
+                          <h3 className="font-bold text-slate-900 mb-2 flex items-center gap-2">
+                              <Key className="w-4 h-4 text-orange-500" /> Security
+                          </h3>
+                          <p className="text-xs text-slate-500 font-medium leading-relaxed mb-6">
+                              Manage your password and account access securely.
+                          </p>
+                      </div>
+                      <Button onClick={handlePasswordReset} variant="outline" className="w-full justify-between h-12 rounded-xl font-bold border-slate-200 hover:bg-slate-50 hover:text-slate-900">
+                          Reset Password <ChevronRight className="w-4 h-4 text-slate-400"/>
+                      </Button>
+                  </div>
+              </div>
+
+              {/* SAVE ACTION */}
+              <div className="flex justify-end pt-4">
+                  <Button 
+                    onClick={handleSave} 
+                    disabled={saving}
+                    className="h-14 px-10 rounded-full bg-slate-900 hover:bg-black text-white font-black text-lg shadow-xl shadow-slate-300 transition-all hover:scale-105 active:scale-95"
+                  >
+                      {saving ? <Loader2 className="animate-spin mr-2"/> : <Save className="w-5 h-5 mr-2" />}
+                      Save Changes
+                  </Button>
+              </div>
+
+          </div>
+      </div>
     </div>
   )
 }

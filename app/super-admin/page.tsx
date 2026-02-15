@@ -9,8 +9,8 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
-// --- TYPES ---
 type ViewState = 'dashboard' | 'users' | 'venues' | 'cms';
 
 export default function SuperAdmin() {
@@ -45,7 +45,7 @@ export default function SuperAdmin() {
     } else {
         const lower = searchQuery.toLowerCase()
         setFilteredUsers(users.filter(u => 
-            u.full_name?.toLowerCase().includes(lower) || 
+            (u.full_name || '').toLowerCase().includes(lower) || 
             u.id.toLowerCase().includes(lower)
         ))
     }
@@ -53,25 +53,46 @@ export default function SuperAdmin() {
 
   const fetchData = async () => {
       setLoading(true)
-      const { data: assetData } = await supabase.from('cms_assets').select('*').order('id')
-      if (assetData) setAssets(assetData)
-
-      const { data: venueData } = await supabase.from('venues').select('*').order('created_at')
-      if (venueData) {
-          setVenues(venueData)
-          if(venueData.length > 0) setStoryData(prev => ({ ...prev, venueId: venueData[0].id }))
-      }
-
-      const { data: userData } = await supabase
-        .from('profiles')
-        .select(`*, wallets ( balance )`)
-        .order('created_at', { ascending: false })
       
-      if (userData) {
-          setUsers(userData)
-          setFilteredUsers(userData)
+      try {
+        // 1. Fetch Assets
+        const { data: assetData } = await supabase.from('cms_assets').select('*').order('id')
+        if (assetData) setAssets(assetData)
+
+        // 2. Fetch Venues
+        const { data: venueData } = await supabase.from('venues').select('*').order('created_at')
+        if (venueData) {
+            setVenues(venueData)
+            if(venueData.length > 0) setStoryData(prev => ({ ...prev, venueId: venueData[0].id }))
+        }
+
+        // 3. ROBUST USER FETCH (The Fix)
+        // Instead of joining, we fetch separately to avoid relationship errors.
+        const { data: profileData, error: pError } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
+        if (pError) throw pError;
+
+        const { data: walletData, error: wError } = await supabase.from('wallets').select('*');
+        if (wError) throw wError;
+
+        // Merge them manually
+        const combinedUsers = profileData.map(profile => {
+            const wallet = walletData.find(w => w.user_id === profile.id);
+            return {
+                ...profile,
+                balance: wallet ? wallet.balance : 0
+            };
+        });
+
+        console.log("Admin Loaded Users:", combinedUsers); // Debug log
+        setUsers(combinedUsers)
+        setFilteredUsers(combinedUsers)
+
+      } catch (err: any) {
+          console.error("Admin Load Error:", err.message)
+          alert("Error loading dashboard: " + err.message)
+      } finally {
+          setLoading(false)
       }
-      setLoading(false)
   }
 
   // --- HANDLERS ---
@@ -102,12 +123,15 @@ export default function SuperAdmin() {
   const handleTopUp = async (userId: string) => {
       const amount = topUpAmounts[userId]
       if (!amount || isNaN(Number(amount))) return alert("Enter valid amount")
+      
       const { error } = await supabase.rpc('admin_topup_wallet', { target_user_id: userId, amount: Number(amount) })
-      if (error) alert("Failed: " + error.message)
-      else {
+      
+      if (error) {
+          alert("Failed: " + error.message)
+      } else {
           alert(`Success! Added ₹${amount}`)
           setTopUpAmounts(prev => ({...prev, [userId]: ''}))
-          fetchData()
+          fetchData() // Refresh logic handles the update
       }
   }
 
@@ -191,7 +215,7 @@ export default function SuperAdmin() {
                         <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800">
                             <Wallet className="w-8 h-8 text-green-500 mb-4" />
                             <h3 className="text-slate-500 text-xs font-bold uppercase tracking-widest">Total Money</h3>
-                            <p className="text-3xl font-black text-green-400 mt-1">₹{(users.reduce((acc, u) => acc + (u.wallets?.[0]?.balance || 0), 0) / 1000).toFixed(1)}k</p>
+                            <p className="text-3xl font-black text-green-400 mt-1">₹{(users.reduce((acc, u) => acc + (u.balance || 0), 0) / 1000).toFixed(1)}k</p>
                         </div>
                         <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800">
                             <Building2 className="w-8 h-8 text-purple-500 mb-4" />
@@ -234,7 +258,7 @@ export default function SuperAdmin() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-800">
-                                    {filteredUsers.map(user => (
+                                    {filteredUsers.length > 0 ? filteredUsers.map(user => (
                                         <tr key={user.id} className="hover:bg-slate-800/50 transition-colors">
                                             <td className="p-4 pl-6">
                                                 <div className="flex items-center gap-3">
@@ -250,7 +274,7 @@ export default function SuperAdmin() {
                                             <td className="p-4">
                                                 <div className="inline-flex items-center gap-2 bg-green-500/10 text-green-400 px-3 py-1 rounded-lg border border-green-500/20">
                                                     <Wallet className="w-3 h-3" />
-                                                    <span className="font-mono font-bold">₹{user.wallets?.[0]?.balance?.toLocaleString() || 0}</span>
+                                                    <span className="font-mono font-bold">₹{(user.balance || 0).toLocaleString()}</span>
                                                 </div>
                                             </td>
                                             <td className="p-4 pr-6 text-right">
@@ -272,7 +296,13 @@ export default function SuperAdmin() {
                                                 </div>
                                             </td>
                                         </tr>
-                                    ))}
+                                    )) : (
+                                        <tr>
+                                            <td colSpan={3} className="p-10 text-center text-slate-500 font-bold">
+                                                No users found. (Check RLS Policies)
+                                            </td>
+                                        </tr>
+                                    )}
                                 </tbody>
                             </table>
                         </div>

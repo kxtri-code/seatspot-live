@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabaseClient'
 import { 
   Loader2, Save, ShieldAlert, CheckCircle, Image as ImageIcon, 
   Type, Zap, Upload, X, Users, Wallet, 
-  Search, MoreHorizontal, Menu, Home, Building2, FileText, Plus, MapPin, Settings, DollarSign
+  Search, MoreHorizontal, Menu, Home, Building2, FileText, Plus, MapPin, Settings, DollarSign, Calendar
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -40,8 +40,15 @@ export default function SuperAdmin() {
   const [venueImage, setVenueImage] = useState<File | null>(null)
   const [isCreatingVenue, setIsCreatingVenue] = useState(false)
 
+  // EVENT Creation State (NEW)
+  const [isAddEventOpen, setIsAddEventOpen] = useState(false)
+  const [newEvent, setNewEvent] = useState({ venue_id: '', title: '', date: '', price: '' })
+  const [eventImage, setEventImage] = useState<File | null>(null)
+  const [isCreatingEvent, setIsCreatingEvent] = useState(false)
+
   const fileInputRef = useRef<HTMLInputElement>(null)
   const venueImageRef = useRef<HTMLInputElement>(null)
+  const eventImageRef = useRef<HTMLInputElement>(null)
 
   // --- INIT ---
   useEffect(() => {
@@ -69,14 +76,15 @@ export default function SuperAdmin() {
         const { data: venueData } = await supabase.from('venues').select('*').order('created_at', { ascending: false })
         if (venueData) {
             setVenues(venueData)
-            if(venueData.length > 0) setStoryData(prev => ({ ...prev, venueId: venueData[0].id }))
+            if(venueData.length > 0) {
+                setStoryData(prev => ({ ...prev, venueId: venueData[0].id }))
+                setNewEvent(prev => ({ ...prev, venue_id: venueData[0].id }))
+            }
         }
 
-        // Fetch System Config
         const { data: configData } = await supabase.from('system_config').select('*').eq('id', 1).single()
         if (configData) setSystemConfig(configData)
 
-        // Robust User Fetch
         const { data: profileData } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
         const { data: walletData } = await supabase.from('wallets').select('*');
         
@@ -97,48 +105,56 @@ export default function SuperAdmin() {
 
   // --- HANDLERS ---
 
-  const handleUpdateBonus = async () => {
-      const { error } = await supabase.from('system_config').update({ signup_bonus: systemConfig.signup_bonus }).eq('id', 1)
-      if (error) alert("Error updating bonus: " + error.message)
-      else alert("Signup Bonus Updated! New users will receive ₹" + systemConfig.signup_bonus)
-  }
-
   const handleCreateVenue = async () => {
-      if (!newVenue.name || !newVenue.location || !venueImage) return alert("Please fill all fields and add an image.")
-      
+      if (!newVenue.name || !newVenue.location || !venueImage) return alert("Fill all venue fields!")
       setIsCreatingVenue(true)
       try {
-          // 1. Upload Image
           const fileExt = venueImage.name.split('.').pop()
           const fileName = `venue-${Date.now()}.${fileExt}`
-          const { error: uploadError } = await supabase.storage.from('venues').upload(fileName, venueImage)
-          if (uploadError) throw uploadError
-
+          await supabase.storage.from('venues').upload(fileName, venueImage)
           const { data: urlData } = supabase.storage.from('venues').getPublicUrl(fileName)
 
-          // 2. Insert to DB
-          const { error: dbError } = await supabase.from('venues').insert({
+          await supabase.from('venues').insert({
               name: newVenue.name,
               location: newVenue.location,
               type: newVenue.type,
               description: newVenue.description,
-              google_maps_url: newVenue.google_maps_url, // NEW FIELD
+              google_maps_url: newVenue.google_maps_url,
               image_url: urlData.publicUrl,
               rating: 5.0 
           })
-          if (dbError) throw dbError
-
           alert("Venue Launched! 🚀")
           setIsAddVenueOpen(false)
-          setNewVenue({ name: '', location: '', type: 'Club', description: '', google_maps_url: '' })
-          setVenueImage(null)
-          fetchData() 
+          fetchData()
+      } catch (err: any) { alert("Error: " + err.message) } 
+      finally { setIsCreatingVenue(false) }
+  }
 
-      } catch (err: any) {
-          alert("Error: " + err.message)
-      } finally {
-          setIsCreatingVenue(false)
-      }
+  const handleCreateEvent = async () => {
+      if (!newEvent.title || !newEvent.date || !newEvent.price || !eventImage) return alert("Fill all event fields!")
+      setIsCreatingEvent(true)
+      try {
+          const fileExt = eventImage.name.split('.').pop()
+          const fileName = `event-${Date.now()}.${fileExt}`
+          await supabase.storage.from('events').upload(fileName, eventImage)
+          const { data: urlData } = supabase.storage.from('events').getPublicUrl(fileName)
+
+          await supabase.from('events').insert({
+              venue_id: newEvent.venue_id,
+              title: newEvent.title,
+              date: new Date(newEvent.date).toISOString(),
+              price_per_seat: Number(newEvent.price),
+              image_url: urlData.publicUrl
+          })
+          alert("Event Published! 🎉")
+          setIsAddEventOpen(false)
+      } catch (err: any) { alert("Error: " + err.message) }
+      finally { setIsCreatingEvent(false) }
+  }
+
+  const handleUpdateBonus = async () => {
+      await supabase.from('system_config').update({ signup_bonus: systemConfig.signup_bonus }).eq('id', 1)
+      alert("Bonus Updated!")
   }
 
   const handleAssetSave = async (id: string, content: string) => {
@@ -203,7 +219,7 @@ export default function SuperAdmin() {
           <nav className="flex-1 px-4 space-y-2 mt-4">
               <NavItem view="dashboard" icon={Home} label="Overview" />
               <NavItem view="users" icon={Users} label="User Economy" />
-              <NavItem view="venues" icon={Building2} label="Venue Manager" />
+              <NavItem view="venues" icon={Building2} label="Venue & Events" />
               <NavItem view="cms" icon={FileText} label="Content Editor" />
               <NavItem view="settings" icon={Settings} label="System Settings" />
           </nav>
@@ -225,7 +241,7 @@ export default function SuperAdmin() {
           <div className="fixed inset-0 z-40 bg-slate-950/95 backdrop-blur-xl md:hidden pt-24 px-6 space-y-4">
               <NavItem view="dashboard" icon={Home} label="Overview" />
               <NavItem view="users" icon={Users} label="User Economy" />
-              <NavItem view="venues" icon={Building2} label="Venue Manager" />
+              <NavItem view="venues" icon={Building2} label="Venue & Events" />
               <NavItem view="cms" icon={FileText} label="Content Editor" />
               <NavItem view="settings" icon={Settings} label="System Settings" />
           </div>
@@ -339,88 +355,90 @@ export default function SuperAdmin() {
                   </div>
               )}
 
-              {/* VENUES */}
+              {/* VENUES & EVENTS */}
               {currentView === 'venues' && (
                   <div className="space-y-6">
                       <div className="flex justify-between items-center">
                         <h2 className="text-3xl font-black text-white">Venue Manager</h2>
-                        <Button 
-                            onClick={() => setIsAddVenueOpen(true)}
-                            className="bg-blue-600 hover:bg-blue-500 text-white font-bold h-12 px-6 rounded-xl shadow-lg shadow-blue-900/20"
-                        >
-                            <Plus className="w-5 h-5 mr-2" /> Add Venue
-                        </Button>
+                        <div className="flex gap-3">
+                            {/* ADD EVENT BUTTON */}
+                            <Button 
+                                onClick={() => setIsAddEventOpen(true)}
+                                className="bg-purple-600 hover:bg-purple-500 text-white font-bold h-12 px-6 rounded-xl shadow-lg shadow-purple-900/20"
+                            >
+                                <Calendar className="w-5 h-5 mr-2" /> New Event
+                            </Button>
+                            {/* ADD VENUE BUTTON */}
+                            <Button 
+                                onClick={() => setIsAddVenueOpen(true)}
+                                className="bg-blue-600 hover:bg-blue-500 text-white font-bold h-12 px-6 rounded-xl shadow-lg shadow-blue-900/20"
+                            >
+                                <Plus className="w-5 h-5 mr-2" /> Add Venue
+                            </Button>
+                        </div>
                       </div>
 
-                      {/* ADD VENUE MODAL */}
+                      {/* MODAL: ADD VENUE */}
                       {isAddVenueOpen && (
                           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in">
                               <div className="bg-slate-900 w-full max-w-md p-6 rounded-3xl border border-slate-800 shadow-2xl relative">
                                   <button onClick={() => setIsAddVenueOpen(false)} className="absolute top-4 right-4 text-slate-500 hover:text-white"><X className="w-6 h-6"/></button>
                                   <h3 className="text-xl font-black text-white mb-6">Launch New Venue</h3>
-                                  
                                   <div className="space-y-4">
-                                      {/* Image Upload */}
                                       <div className="space-y-2">
                                           <label className="text-xs font-bold uppercase text-slate-400">Cover Image</label>
                                           <div 
                                               onClick={() => venueImageRef.current?.click()}
                                               className="h-32 rounded-xl border-2 border-dashed border-slate-700 hover:border-blue-500 cursor-pointer flex flex-col items-center justify-center gap-2 bg-slate-950 transition-colors"
                                           >
-                                              {venueImage ? (
-                                                  <div className="flex flex-col items-center text-green-500">
-                                                      <CheckCircle className="w-6 h-6 mb-1"/>
-                                                      <span className="text-xs font-bold">{venueImage.name}</span>
-                                                  </div>
-                                              ) : (
-                                                  <>
-                                                      <ImageIcon className="w-8 h-8 text-slate-500"/>
-                                                      <span className="text-xs font-bold text-slate-500">Click to Upload</span>
-                                                  </>
-                                              )}
+                                              {venueImage ? <span className="text-xs font-bold text-green-500">{venueImage.name}</span> : <><ImageIcon className="w-8 h-8 text-slate-500"/><span className="text-xs font-bold text-slate-500">Upload</span></>}
                                               <input type="file" ref={venueImageRef} className="hidden" accept="image/*" onChange={(e) => {if(e.target.files?.[0]) setVenueImage(e.target.files[0])}}/>
                                           </div>
                                       </div>
-
-                                      <div className="space-y-2">
-                                          <label className="text-xs font-bold uppercase text-slate-400">Venue Name</label>
-                                          <Input value={newVenue.name} onChange={e => setNewVenue({...newVenue, name: e.target.value})} className="bg-black border-slate-700 font-bold" placeholder="e.g. SkyDeck Lounge"/>
-                                      </div>
-
+                                      <div className="space-y-2"><label className="text-xs font-bold uppercase text-slate-400">Name</label><Input value={newVenue.name} onChange={e => setNewVenue({...newVenue, name: e.target.value})} className="bg-black border-slate-700 font-bold" placeholder="Venue Name"/></div>
                                       <div className="grid grid-cols-2 gap-4">
                                           <div className="space-y-2">
                                               <label className="text-xs font-bold uppercase text-slate-400">Type</label>
-                                              <select 
-                                                  value={newVenue.type} 
-                                                  onChange={e => setNewVenue({...newVenue, type: e.target.value})} 
-                                                  className="w-full h-10 bg-black border border-slate-700 rounded-md text-white px-3 font-bold text-sm focus:border-blue-500 outline-none"
-                                              >
-                                                  <option value="Club">Club</option>
-                                                  <option value="Cafe">Cafe</option>
-                                                  <option value="Lounge">Lounge</option>
-                                                  <option value="Concert">Concert</option>
+                                              <select value={newVenue.type} onChange={e => setNewVenue({...newVenue, type: e.target.value})} className="w-full h-10 bg-black border border-slate-700 rounded-md text-white px-3 font-bold text-sm outline-none">
+                                                  <option value="Club">Club</option><option value="Cafe">Cafe</option><option value="Lounge">Lounge</option><option value="Concert">Concert</option>
                                               </select>
                                           </div>
-                                          <div className="space-y-2">
-                                              <label className="text-xs font-bold uppercase text-slate-400">Location</label>
-                                              <Input value={newVenue.location} onChange={e => setNewVenue({...newVenue, location: e.target.value})} className="bg-black border-slate-700 font-bold" placeholder="e.g. Dimapur"/>
+                                          <div className="space-y-2"><label className="text-xs font-bold uppercase text-slate-400">Location</label><Input value={newVenue.location} onChange={e => setNewVenue({...newVenue, location: e.target.value})} className="bg-black border-slate-700 font-bold" placeholder="City"/></div>
+                                      </div>
+                                      <div className="space-y-2"><label className="text-xs font-bold uppercase text-slate-400">Map Link</label><Input value={newVenue.google_maps_url} onChange={e => setNewVenue({...newVenue, google_maps_url: e.target.value})} className="bg-black border-slate-700 font-bold" placeholder="Google Maps URL"/></div>
+                                      <div className="space-y-2"><label className="text-xs font-bold uppercase text-slate-400">Description</label><Textarea value={newVenue.description} onChange={e => setNewVenue({...newVenue, description: e.target.value})} className="bg-black border-slate-700 font-bold" placeholder="Description..."/></div>
+                                      <Button onClick={handleCreateVenue} disabled={isCreatingVenue} className="w-full bg-green-600 hover:bg-green-500 font-bold h-12 text-lg mt-2">{isCreatingVenue ? <Loader2 className="animate-spin"/> : "Launch Live 🚀"}</Button>
+                                  </div>
+                              </div>
+                          </div>
+                      )}
+
+                      {/* MODAL: ADD EVENT (NEW) */}
+                      {isAddEventOpen && (
+                          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in">
+                              <div className="bg-slate-900 w-full max-w-md p-6 rounded-3xl border border-slate-800 shadow-2xl relative">
+                                  <button onClick={() => setIsAddEventOpen(false)} className="absolute top-4 right-4 text-slate-500 hover:text-white"><X className="w-6 h-6"/></button>
+                                  <h3 className="text-xl font-black text-white mb-6">Create New Party</h3>
+                                  <div className="space-y-4">
+                                      <div className="space-y-2">
+                                          <label className="text-xs font-bold uppercase text-slate-400">Select Venue</label>
+                                          <select value={newEvent.venue_id} onChange={(e) => setNewEvent({...newEvent, venue_id: e.target.value})} className="w-full h-12 bg-black border border-slate-700 rounded-xl text-white px-4 font-bold outline-none">
+                                              {venues.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                                          </select>
+                                      </div>
+                                      <div className="space-y-2">
+                                          <label className="text-xs font-bold uppercase text-slate-400">Event Poster</label>
+                                          <div onClick={() => eventImageRef.current?.click()} className="h-32 rounded-xl border-2 border-dashed border-slate-700 hover:border-purple-500 cursor-pointer flex flex-col items-center justify-center gap-2 bg-slate-950 transition-colors">
+                                              {eventImage ? <span className="text-xs font-bold text-green-500">{eventImage.name}</span> : <><ImageIcon className="w-8 h-8 text-slate-500"/><span className="text-xs font-bold text-slate-500">Upload</span></>}
+                                              <input type="file" ref={eventImageRef} className="hidden" accept="image/*" onChange={(e) => {if(e.target.files?.[0]) setEventImage(e.target.files[0])}}/>
                                           </div>
                                       </div>
-
-                                      {/* NEW: Google Maps Link */}
-                                      <div className="space-y-2">
-                                          <label className="text-xs font-bold uppercase text-slate-400">Google Maps Link</label>
-                                          <Input value={newVenue.google_maps_url} onChange={e => setNewVenue({...newVenue, google_maps_url: e.target.value})} className="bg-black border-slate-700 font-bold" placeholder="https://maps.google.com/..."/>
+                                      <div className="space-y-2"><label className="text-xs font-bold uppercase text-slate-400">Event Title</label><Input value={newEvent.title} onChange={e => setNewEvent({...newEvent, title: e.target.value})} className="bg-black border-slate-700 font-bold" placeholder="e.g. Saturday Night Jazz"/></div>
+                                      <div className="grid grid-cols-2 gap-4">
+                                          <div className="space-y-2"><label className="text-xs font-bold uppercase text-slate-400">Date</label><Input type="datetime-local" value={newEvent.date} onChange={e => setNewEvent({...newEvent, date: e.target.value})} className="bg-black border-slate-700 font-bold text-xs"/></div>
+                                          <div className="space-y-2"><label className="text-xs font-bold uppercase text-slate-400">Price (₹)</label><Input type="number" value={newEvent.price} onChange={e => setNewEvent({...newEvent, price: e.target.value})} className="bg-black border-slate-700 font-bold" placeholder="500"/></div>
                                       </div>
-
-                                      <div className="space-y-2">
-                                          <label className="text-xs font-bold uppercase text-slate-400">Description</label>
-                                          <Textarea value={newVenue.description} onChange={e => setNewVenue({...newVenue, description: e.target.value})} className="bg-black border-slate-700 font-bold" placeholder="Brief vibe check..."/>
-                                      </div>
-
-                                      <Button onClick={handleCreateVenue} disabled={isCreatingVenue} className="w-full bg-green-600 hover:bg-green-500 font-bold h-12 text-lg mt-2">
-                                          {isCreatingVenue ? <Loader2 className="animate-spin"/> : "Launch Live 🚀"}
-                                      </Button>
+                                      <Button onClick={handleCreateEvent} disabled={isCreatingEvent} className="w-full bg-purple-600 hover:bg-purple-500 font-bold h-12 text-lg mt-2">{isCreatingEvent ? <Loader2 className="animate-spin"/> : "Publish Party 🎉"}</Button>
                                   </div>
                               </div>
                           </div>
@@ -509,7 +527,7 @@ export default function SuperAdmin() {
                   </div>
               )}
 
-              {/* SETTINGS (NEW) */}
+              {/* SETTINGS */}
               {currentView === 'settings' && (
                   <div className="space-y-6">
                       <h2 className="text-3xl font-black text-white">System Settings</h2>

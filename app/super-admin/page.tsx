@@ -2,99 +2,115 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabaseClient'
-import { Loader2, Layout, ShieldAlert, CheckCircle, Image as ImageIcon, Type, Link as LinkIcon, Zap, Upload, X } from 'lucide-react'
+import { Loader2, Save, Layout, ShieldAlert, CheckCircle, Image as ImageIcon, Type, Link as LinkIcon, Zap, Upload, X, Users, Wallet, TrendingUp, Search, MoreHorizontal } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 export default function SuperAdmin() {
+  const [loading, setLoading] = useState(true)
+  
+  // Data State
   const [assets, setAssets] = useState<any[]>([])
   const [venues, setVenues] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [savingId, setSavingId] = useState<string | null>(null)
+  const [users, setUsers] = useState<any[]>([])
+  const [filteredUsers, setFilteredUsers] = useState<any[]>([])
+  const [searchQuery, setSearchQuery] = useState('')
   
-  // STORY UPLOAD STATE
+  // UI State
+  const [savingId, setSavingId] = useState<string | null>(null)
   const [storyData, setStoryData] = useState({ venueId: '', url: '' })
   const [storyFile, setStoryFile] = useState<File | null>(null)
   const [isPostingStory, setIsPostingStory] = useState(false)
+  const [topUpAmounts, setTopUpAmounts] = useState<Record<string, string>>({})
+
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // INIT
   useEffect(() => {
-    const fetchData = async () => {
+    fetchData()
+  }, [])
+
+  useEffect(() => {
+    if (searchQuery.trim() === '') {
+        setFilteredUsers(users)
+    } else {
+        const lower = searchQuery.toLowerCase()
+        setFilteredUsers(users.filter(u => 
+            u.full_name?.toLowerCase().includes(lower) || 
+            u.id.toLowerCase().includes(lower)
+        ))
+    }
+  }, [searchQuery, users])
+
+  const fetchData = async () => {
       setLoading(true)
-      // 1. Fetch CMS Assets
+      
+      // 1. Assets
       const { data: assetData } = await supabase.from('cms_assets').select('*').order('id')
       if (assetData) setAssets(assetData)
 
-      // 2. Fetch Venues
+      // 2. Venues
       const { data: venueData } = await supabase.from('venues').select('*').order('created_at')
       if (venueData) {
           setVenues(venueData)
           if(venueData.length > 0) setStoryData(prev => ({ ...prev, venueId: venueData[0].id }))
       }
-      setLoading(false)
-    }
-    fetchData()
-  }, [])
 
-  // CMS HANDLERS
-  const handleAssetChange = (id: string, newVal: string) => {
-    setAssets(prev => prev.map(a => a.id === id ? { ...a, content: newVal } : a))
+      // 3. Users & Wallets
+      const { data: userData } = await supabase
+        .from('profiles')
+        .select(`*, wallets ( balance )`)
+        .order('created_at', { ascending: false })
+      
+      if (userData) {
+          setUsers(userData)
+          setFilteredUsers(userData)
+      }
+      
+      setLoading(false)
   }
 
+  // --- HANDLERS ---
   const handleAssetSave = async (id: string, content: string) => {
     setSavingId(id)
-    const { error } = await supabase.from('cms_assets').update({ content }).eq('id', id)
-    if (error) alert("Error: " + error.message)
-    else setTimeout(() => setSavingId(null), 1000)
+    await supabase.from('cms_assets').update({ content }).eq('id', id)
+    setTimeout(() => setSavingId(null), 1000)
   }
 
-  // --- NEW: HANDLE STORY UPLOAD ---
   const handlePostStory = async () => {
-      if (!storyData.venueId) return alert("Please select a venue")
-      if (!storyData.url && !storyFile) return alert("Please provide an image (URL or Upload)")
-      
+      if (!storyData.venueId) return alert("Select venue")
       setIsPostingStory(true)
       let finalUrl = storyData.url
-
       try {
-          // 1. If File Selected -> Upload to Supabase Storage
           if (storyFile) {
-              const fileExt = storyFile.name.split('.').pop()
-              const fileName = `${Date.now()}.${fileExt}`
-              const filePath = `${storyData.venueId}/${fileName}` // Organize by Venue ID
-
-              const { error: uploadError } = await supabase.storage
-                  .from('stories')
-                  .upload(filePath, storyFile)
-
-              if (uploadError) throw uploadError
-
-              // Get Public URL
-              const { data } = supabase.storage.from('stories').getPublicUrl(filePath)
+              const path = `${storyData.venueId}/${Date.now()}.${storyFile.name.split('.').pop()}`
+              await supabase.storage.from('stories').upload(path, storyFile)
+              const { data } = supabase.storage.from('stories').getPublicUrl(path)
               finalUrl = data.publicUrl
           }
+          await supabase.from('stories').insert({ venue_id: storyData.venueId, media_url: finalUrl })
+          alert("Posted!")
+          setStoryData(prev => ({...prev, url: ''})); setStoryFile(null);
+      } catch (e: any) { alert(e.message) }
+      setIsPostingStory(false)
+  }
 
-          // 2. Save to Database
-          const { error: dbError } = await supabase.from('stories').insert({
-              venue_id: storyData.venueId,
-              media_url: finalUrl
-          })
+  const handleTopUp = async (userId: string) => {
+      const amount = topUpAmounts[userId]
+      if (!amount || isNaN(Number(amount))) return alert("Enter valid amount")
 
-          if (dbError) throw dbError
+      const { error } = await supabase.rpc('admin_topup_wallet', {
+          target_user_id: userId,
+          amount: Number(amount)
+      })
 
-          alert("Live Story Posted Successfully!")
-          
-          // Reset Form
-          setStoryData(prev => ({ ...prev, url: '' }))
-          setStoryFile(null)
-          if(fileInputRef.current) fileInputRef.current.value = ''
-
-      } catch (err: any) {
-          alert("Error: " + err.message)
-      } finally {
-          setIsPostingStory(false)
+      if (error) {
+          alert("Failed: " + error.message)
+      } else {
+          alert(`Successfully added ₹${amount} to user!`)
+          setTopUpAmounts(prev => ({...prev, [userId]: ''}))
+          fetchData()
       }
   }
 
@@ -104,180 +120,191 @@ export default function SuperAdmin() {
     <div className="min-h-screen bg-slate-950 text-white font-sans pb-20">
       
       {/* HEADER */}
-      <div className="bg-slate-900 border-b border-slate-800 p-6 sticky top-0 z-50 flex justify-between items-center shadow-2xl">
-          <div>
-              <h1 className="text-2xl font-black flex items-center gap-2 text-white">
-                  <ShieldAlert className="text-red-500 fill-red-500/20" /> GOD MODE
-              </h1>
-              <p className="text-slate-400 text-xs font-mono uppercase tracking-widest mt-1">Full Platform Control • {venues.length} Venues Active</p>
+      <div className="bg-slate-900 border-b border-slate-800 p-6 sticky top-0 z-50 flex justify-between items-center shadow-2xl backdrop-blur-md bg-opacity-90">
+          <div className="flex items-center gap-4">
+              <div className="w-10 h-10 bg-slate-800 rounded-xl flex items-center justify-center border border-slate-700">
+                  <ShieldAlert className="text-red-500 w-6 h-6" />
+              </div>
+              <div>
+                  <h1 className="text-xl font-black text-white tracking-tight">GOD MODE</h1>
+                  <p className="text-slate-400 text-xs font-mono uppercase tracking-widest">Platform Command Center</p>
+              </div>
           </div>
-          <Button variant="destructive" size="sm" className="font-bold uppercase tracking-widest">Admin Access</Button>
+          <div className="flex gap-4">
+              <div className="hidden md:block text-right">
+                  <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">System Status</p>
+                  <div className="flex items-center gap-2 justify-end">
+                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"/>
+                      <span className="text-green-500 font-bold text-sm">Online</span>
+                  </div>
+              </div>
+          </div>
       </div>
 
-      <div className="p-6 max-w-6xl mx-auto">
+      <div className="p-6 max-w-7xl mx-auto">
           
-          <Tabs defaultValue="venues" className="w-full">
-            <TabsList className="w-full bg-slate-900 p-1 rounded-xl border border-slate-800 mb-8">
-                <TabsTrigger value="cms" className="flex-1 font-bold data-[state=active]:bg-blue-600 data-[state=active]:text-white">Homepage Editor</TabsTrigger>
-                <TabsTrigger value="venues" className="flex-1 font-bold data-[state=active]:bg-blue-600 data-[state=active]:text-white">Venue Manager & Stories</TabsTrigger>
-                <TabsTrigger value="users" className="flex-1 font-bold data-[state=active]:bg-blue-600 data-[state=active]:text-white">User Roles</TabsTrigger>
+          <Tabs defaultValue="economy" className="w-full">
+            <TabsList className="w-full bg-slate-900 p-1 rounded-xl border border-slate-800 mb-8 grid grid-cols-3">
+                <TabsTrigger value="economy" className="font-bold data-[state=active]:bg-slate-800 data-[state=active]:text-white">User & Economy</TabsTrigger>
+                <TabsTrigger value="venues" className="font-bold data-[state=active]:bg-slate-800 data-[state=active]:text-white">Venue Manager</TabsTrigger>
+                <TabsTrigger value="cms" className="font-bold data-[state=active]:bg-slate-800 data-[state=active]:text-white">CMS Editor</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="cms" className="space-y-6 animate-in fade-in">
-                {/* (Keep existing CMS Editor code if you want, or I can paste it again if needed) */}
-                 <div className="bg-slate-900 p-8 rounded-3xl border border-slate-800 shadow-xl">
-                    <div className="flex items-center justify-between mb-8">
-                        <h3 className="font-bold text-white text-xl flex items-center gap-2"><Layout className="w-6 h-6 text-blue-500" /> Live Site Visuals</h3>
-                        <span className="text-xs font-mono text-slate-500">Updates reflect instantly</span>
+            {/* TAB 1: ECONOMY */}
+            <TabsContent value="economy" className="space-y-6 animate-in fade-in">
+                
+                {/* Stats Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="bg-gradient-to-br from-slate-900 to-slate-900 p-6 rounded-2xl border border-slate-800 shadow-lg relative overflow-hidden group">
+                        <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform"><Users className="w-20 h-20 text-blue-500" /></div>
+                        <h3 className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Total Users</h3>
+                        <p className="text-4xl font-black text-white">{users.length}</p>
                     </div>
-                    <div className="grid gap-6">
-                        {assets.map((asset) => (
-                            <div key={asset.id} className="group bg-slate-950/50 p-4 rounded-2xl border border-slate-800 hover:border-blue-500/50 transition-colors">
-                                <div className="flex justify-between items-center mb-3">
-                                    <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                                        {asset.type === 'image' ? <ImageIcon className="w-3 h-3"/> : <Type className="w-3 h-3"/>} {asset.label}
-                                    </label>
-                                    {asset.type === 'image' && (<a href={asset.content} target="_blank" className="text-[10px] bg-slate-800 hover:bg-slate-700 px-2 py-1 rounded text-slate-300 flex items-center gap-1"><LinkIcon className="w-3 h-3"/> View</a>)}
-                                </div>
-                                <div className="flex gap-4 items-start">
-                                    <div className="flex-1 relative">
-                                        <Input value={asset.content} onChange={(e) => handleAssetChange(asset.id, e.target.value)} className="font-mono text-xs bg-black border-slate-800 text-slate-200 h-12 focus:ring-blue-500 focus:border-blue-500" />
-                                        {asset.type === 'image' && (<div className="absolute right-2 top-2 w-8 h-8 rounded border border-slate-700 overflow-hidden bg-slate-800 group-hover:scale-150 transition-transform origin-top-right z-10"><img src={asset.content} className="w-full h-full object-cover" /></div>)}
-                                    </div>
-                                    <Button onClick={() => handleAssetSave(asset.id, asset.content)} disabled={savingId === asset.id} className={`w-14 h-12 rounded-xl font-bold transition-all ${savingId === asset.id ? 'bg-green-500 text-white' : 'bg-white text-black hover:bg-slate-200'}`}>{savingId === asset.id ? <CheckCircle className="w-5 h-5" /> : "Save"}</Button>
-                                </div>
-                            </div>
-                        ))}
+                    <div className="bg-gradient-to-br from-slate-900 to-slate-900 p-6 rounded-2xl border border-slate-800 shadow-lg relative overflow-hidden group">
+                        <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform"><Wallet className="w-20 h-20 text-green-500" /></div>
+                        <h3 className="text-slate-400 text-xs font-bold uppercase tracking-widest mb-1">Total Economy</h3>
+                        <p className="text-4xl font-black text-green-400">
+                             ₹{users.reduce((acc, u) => acc + (u.wallets?.[0]?.balance || 0), 0).toLocaleString()}
+                        </p>
+                    </div>
+                </div>
+
+                {/* User Table */}
+                <div className="bg-slate-900 rounded-3xl border border-slate-800 overflow-hidden shadow-xl">
+                    <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-900/50">
+                        <h3 className="font-bold text-lg flex items-center gap-2">
+                            <Users className="w-5 h-5 text-blue-500" /> Central Bank
+                        </h3>
+                        <div className="relative w-64">
+                            <Search className="absolute left-3 top-3 w-4 h-4 text-slate-500" />
+                            <Input 
+                                placeholder="Search users..." 
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="pl-10 bg-black border-slate-700 text-white h-10 rounded-xl focus:ring-blue-500" 
+                            />
+                        </div>
+                    </div>
+                    
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left">
+                            <thead className="bg-slate-950 text-slate-400 text-xs font-bold uppercase tracking-widest">
+                                <tr>
+                                    <th className="p-4 pl-6">User Identity</th>
+                                    <th className="p-4">Wallet Balance</th>
+                                    <th className="p-4 text-right pr-6">Inject Funds</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-800">
+                                {filteredUsers.map(user => (
+                                    <tr key={user.id} className="hover:bg-slate-800/30 transition-colors group">
+                                        <td className="p-4 pl-6">
+                                            <div className="flex items-center gap-4">
+                                                <div className="w-10 h-10 rounded-full bg-slate-800 overflow-hidden border border-slate-700 shadow-sm">
+                                                    {user.avatar_url ? <img src={user.avatar_url} className="w-full h-full object-cover"/> : <Users className="w-full h-full p-2 text-slate-500"/>}
+                                                </div>
+                                                <div>
+                                                    <p className="font-bold text-white text-sm">{user.full_name || 'Anonymous'}</p>
+                                                    <p className="text-xs text-slate-500 font-mono">{user.id}</p>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="p-4">
+                                            <div className="inline-flex items-center gap-2 bg-green-500/10 text-green-400 px-3 py-1 rounded-lg border border-green-500/20">
+                                                <Wallet className="w-3 h-3" />
+                                                <span className="font-mono font-bold text-lg">₹{user.wallets?.[0]?.balance?.toLocaleString() || 0}</span>
+                                            </div>
+                                        </td>
+                                        <td className="p-4 pr-6 text-right">
+                                            <div className="flex items-center justify-end gap-2 opacity-100 group-hover:opacity-100 transition-opacity">
+                                                <div className="relative">
+                                                    <span className="absolute left-3 top-2.5 text-slate-500 text-xs font-bold">₹</span>
+                                                    <Input 
+                                                        placeholder="Amount" 
+                                                        type="number"
+                                                        value={topUpAmounts[user.id] || ''}
+                                                        onChange={(e) => setTopUpAmounts({...topUpAmounts, [user.id]: e.target.value})}
+                                                        className="w-32 pl-6 bg-black border-slate-700 h-10 text-white focus:border-green-500 transition-colors"
+                                                    />
+                                                </div>
+                                                <Button 
+                                                    onClick={() => handleTopUp(user.id)}
+                                                    className="bg-green-600 hover:bg-green-500 text-white font-bold h-10 shadow-lg shadow-green-900/20"
+                                                >
+                                                    <TrendingUp className="w-4 h-4 mr-2" /> Add
+                                                </Button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </TabsContent>
 
+            {/* TAB 2: VENUES */}
             <TabsContent value="venues" className="space-y-6">
-                 
-                 {/* --- THE UPGRADED UPLOADER --- */}
-                 <div className="bg-gradient-to-r from-blue-900/40 to-purple-900/40 p-8 rounded-[2rem] border border-blue-500/30 relative overflow-hidden">
+                 {/* UPLOADER */}
+                 <div className="bg-gradient-to-r from-blue-900/40 to-purple-900/40 p-8 rounded-[2rem] border border-blue-500/30 relative overflow-hidden shadow-2xl">
                      <div className="absolute top-0 right-0 p-4 opacity-20"><Zap className="w-32 h-32 text-blue-400" /></div>
-                     
                      <div className="relative z-10">
-                        <div className="flex justify-between items-start mb-6">
-                             <h3 className="font-bold text-white flex items-center gap-3 text-xl">
-                                 <span className="flex h-3 w-3 relative">
-                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                                    <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
-                                 </span>
-                                 Post Live Story
-                             </h3>
-                             <div className="text-right">
-                                 <p className="text-[10px] font-bold text-blue-300 uppercase tracking-widest bg-blue-900/50 px-3 py-1 rounded-full border border-blue-500/30">
-                                     Best Practice: 9:16 Portrait • &lt; 5MB
-                                 </p>
-                             </div>
-                        </div>
-                        
+                        <h3 className="font-bold text-white mb-6 flex items-center gap-3 text-xl relative z-10">Post Live Story</h3>
                         <div className="flex flex-col md:flex-row gap-4 items-end">
-                             {/* 1. Venue Select */}
                              <div className="w-full md:w-1/3">
                                  <label className="text-[10px] font-bold text-blue-200 uppercase tracking-widest mb-2 block">Select Venue</label>
-                                 <select 
-                                    value={storyData.venueId}
-                                    onChange={(e) => setStoryData({...storyData, venueId: e.target.value})}
-                                    className="w-full h-14 bg-slate-950 border border-slate-700 rounded-xl text-white px-4 text-sm font-bold focus:outline-none focus:border-blue-500 transition-colors"
-                                 >
+                                 <select value={storyData.venueId} onChange={(e) => setStoryData({...storyData, venueId: e.target.value})} className="w-full h-14 bg-slate-950 border border-slate-700 rounded-xl text-white px-4 text-sm font-bold focus:ring-2 focus:ring-blue-500 outline-none">
                                      {venues.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
                                  </select>
                              </div>
-                             
-                             {/* 2. Image Input (File OR Url) */}
                              <div className="flex-1 w-full">
-                                 <label className="text-[10px] font-bold text-blue-200 uppercase tracking-widest mb-2 block">Upload Image</label>
-                                 
-                                 {/* File Input Toggle UI */}
+                                 <label className="text-[10px] font-bold text-blue-200 uppercase tracking-widest mb-2 block">Upload Media</label>
                                  <div className="flex gap-2">
-                                     {/* Hidden Input */}
-                                     <input 
-                                        type="file" 
-                                        ref={fileInputRef}
-                                        accept="image/*"
-                                        className="hidden"
-                                        onChange={(e) => {
-                                            if(e.target.files?.[0]) {
-                                                setStoryFile(e.target.files[0])
-                                                setStoryData(p => ({...p, url: ''})) // Clear URL if file selected
-                                            }
-                                        }}
-                                     />
-                                     
-                                     {/* Custom Upload Button */}
-                                     <div 
-                                        onClick={() => fileInputRef.current?.click()}
-                                        className={`flex-1 h-14 rounded-xl border border-dashed flex items-center justify-center gap-2 cursor-pointer transition-all ${storyFile ? 'bg-green-500/20 border-green-500 text-green-300' : 'bg-slate-950 border-slate-700 text-slate-400 hover:border-blue-500 hover:text-white'}`}
-                                     >
-                                         {storyFile ? (
-                                             <>
-                                                <CheckCircle className="w-5 h-5" />
-                                                <span className="text-sm font-bold truncate max-w-[150px]">{storyFile.name}</span>
-                                                <button onClick={(e) => { e.stopPropagation(); setStoryFile(null); }}><X className="w-4 h-4 text-slate-400 hover:text-white"/></button>
-                                             </>
-                                         ) : (
-                                             <>
-                                                <Upload className="w-5 h-5" />
-                                                <span className="text-sm font-bold">Choose from Device</span>
-                                             </>
-                                         )}
+                                     <input type="file" ref={fileInputRef} className="hidden" onChange={(e) => { if(e.target.files?.[0]) setStoryFile(e.target.files[0]) }} />
+                                     <div onClick={() => fileInputRef.current?.click()} className={`flex-1 h-14 rounded-xl border border-dashed flex items-center justify-center gap-2 cursor-pointer transition-all ${storyFile ? 'bg-green-500/20 border-green-500 text-green-300' : 'bg-slate-950 border-slate-700 hover:border-blue-500 text-slate-400'}`}>
+                                         {storyFile ? <><CheckCircle className="w-5 h-5" /> <span className="text-sm font-bold">{storyFile.name}</span></> : <><Upload className="w-5 h-5" /> <span className="text-sm font-bold">Choose File</span></>}
                                      </div>
-
-                                     {/* Fallback URL Input (Small) */}
-                                     <Input 
-                                        value={storyData.url}
-                                        onChange={(e) => {
-                                            setStoryData({...storyData, url: e.target.value})
-                                            setStoryFile(null) // Clear file if URL typed
-                                        }}
-                                        placeholder="Or paste URL..." 
-                                        className="w-1/3 bg-slate-950 border-slate-700 text-white h-14 rounded-xl" 
-                                     />
                                  </div>
                              </div>
-
-                             {/* 3. Submit */}
-                             <Button 
-                                onClick={handlePostStory}
-                                disabled={isPostingStory}
-                                className="h-14 w-full md:w-auto bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl px-8 shadow-lg shadow-blue-900/20"
-                             >
-                                 {isPostingStory ? <Loader2 className="animate-spin"/> : "Post Live"}
-                             </Button>
+                             <Button onClick={handlePostStory} disabled={isPostingStory} className="h-14 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl px-8 shadow-lg shadow-blue-900/20">{isPostingStory ? <Loader2 className="animate-spin"/> : "Post Live"}</Button>
                         </div>
                      </div>
                  </div>
-
-                 {/* VENUE LIST */}
-                 <div className="space-y-4">
-                    <h3 className="font-bold text-slate-400 text-sm uppercase tracking-widest pl-2">Managed Venues</h3>
+                 
+                 {/* LIST */}
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {venues.map(v => (
                         <div key={v.id} className="bg-slate-900 p-4 rounded-2xl border border-slate-800 flex justify-between items-center group hover:border-slate-700 transition-colors">
-                            <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 bg-slate-800 rounded-xl overflow-hidden relative">
-                                    <img src={v.image_url} className="w-full h-full object-cover"/>
-                                </div>
-                                <div>
-                                    <h4 className="font-bold text-white group-hover:text-blue-400 transition-colors">{v.name}</h4>
-                                    <p className="text-xs text-slate-400">{v.location}</p>
-                                </div>
-                            </div>
-                            <Button variant="outline" size="sm" className="border-slate-700 text-slate-300 hover:bg-slate-800 bg-transparent">Edit Details</Button>
+                            <div className="flex items-center gap-4"><img src={v.image_url} className="w-16 h-16 rounded-xl object-cover shadow-sm"/><h4 className="font-bold text-white text-lg">{v.name}</h4></div>
+                            <Button variant="ghost" size="sm" className="text-slate-500 hover:text-white"><MoreHorizontal/></Button>
                         </div>
                     ))}
                  </div>
             </TabsContent>
 
-            <TabsContent value="users">
-                <div className="p-10 text-center border border-dashed border-slate-800 rounded-3xl bg-slate-900/50">
-                    <p className="text-slate-500">User Role Management Module Loading...</p>
+            {/* TAB 3: CMS */}
+            <TabsContent value="cms" className="space-y-6">
+                <div className="bg-slate-900 p-8 rounded-3xl border border-slate-800 shadow-xl">
+                    <div className="grid gap-6">
+                        {assets.map((asset) => (
+                            <div key={asset.id} className="bg-slate-950/50 p-6 rounded-2xl border border-slate-800 flex flex-col md:flex-row gap-6 items-start hover:border-slate-700 transition-colors">
+                                <div className="flex-1 w-full">
+                                    <div className="flex justify-between mb-2">
+                                        <label className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">{asset.type === 'image' ? <ImageIcon className="w-3 h-3"/> : <Type className="w-3 h-3"/>} {asset.label}</label>
+                                        {asset.type === 'image' && <a href={asset.content} target="_blank" className="text-[10px] text-blue-400 hover:underline">View Source</a>}
+                                    </div>
+                                    <div className="relative">
+                                        <Input value={asset.content} onChange={(e) => setAssets(prev => prev.map(a => a.id === asset.id ? { ...a, content: e.target.value } : a))} className="font-mono text-xs bg-black border-slate-800 text-slate-200 h-12 focus:border-blue-500" />
+                                        {asset.type === 'image' && <img src={asset.content} className="absolute right-2 top-2 w-8 h-8 rounded object-cover border border-slate-700"/>}
+                                    </div>
+                                </div>
+                                <Button onClick={() => handleAssetSave(asset.id, asset.content)} disabled={savingId === asset.id} className={`h-12 w-full md:w-auto px-6 mt-auto rounded-xl font-bold ${savingId === asset.id ? 'bg-green-600' : 'bg-white text-black hover:bg-slate-200'}`}>{savingId === asset.id ? <CheckCircle className="w-5 h-5" /> : "Save"}</Button>
+                            </div>
+                        ))}
+                    </div>
                 </div>
             </TabsContent>
           </Tabs>
-
       </div>
     </div>
   )

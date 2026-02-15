@@ -4,12 +4,12 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 import { 
-  Loader2, ArrowLeft, MapPin, Star, Share2, Users, MessageSquare, 
-  CheckCircle, Calendar, Heart, Flame, Music, Info, Minus, Plus 
+  Loader2, ArrowLeft, MapPin, Star, Flame, Music, Info, Minus, Plus, CheckCircle 
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import SeatMap from '@/components/SeatMap'
+import ReviewSection from '@/components/ReviewSection' // <--- Imported here
 
 export default function VenueDetails() {
   const params = useParams()
@@ -28,9 +28,9 @@ export default function VenueDetails() {
   const [bookingStep, setBookingStep] = useState(1) 
   const [isBookingLoading, setIsBookingLoading] = useState(false)
   const [selectedSeat, setSelectedSeat] = useState<any>(null)
-  const [guestCount, setGuestCount] = useState(2) // Default to 2 guests
+  const [guestCount, setGuestCount] = useState(2)
   
-  const vibeScore = 92; 
+  const vibeScore = venue?.rating ? Math.round(venue.rating * 20) : 92; // 5 stars = 100 vibe
 
   // --- INIT ---
   useEffect(() => {
@@ -72,7 +72,7 @@ export default function VenueDetails() {
   const handleOpenBooking = () => {
       if (!currentUser) {
           const confirmLogin = confirm("You need to login to book a table. Go to login?")
-          if (confirmLogin) router.push('/login')
+          if (confirmLogin) router.push('/profile') // Redirect to profile login
           return
       }
       setIsBookingOpen(true)
@@ -94,7 +94,7 @@ export default function VenueDetails() {
             guest_name: currentUser.email,
             guest_phone: "N/A", 
             date: new Date().toISOString(),
-            admit_count: guestCount, // <--- NOW USES YOUR SELECTED COUNT
+            admit_count: guestCount,
             seat_label: selectedSeat.label,
             status: 'confirmed'
         });
@@ -151,8 +151,11 @@ export default function VenueDetails() {
           
           <div className="flex items-center justify-between mb-8">
               <div className="flex flex-col">
-                  <span className="text-2xl font-black text-slate-900">1.2k</span>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Followers</span>
+                  <span className="text-2xl font-black text-slate-900">{venue.rating || 'New'}</span>
+                  <div className="flex text-yellow-400 gap-1">
+                      <Star className="w-3 h-3 fill-current"/>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-black">Rating</span>
+                  </div>
               </div>
               <Button 
                 onClick={() => setFollowing(!following)}
@@ -192,7 +195,7 @@ export default function VenueDetails() {
                     </div>
                 )) : (
                     <div className="text-center py-12 bg-slate-50 rounded-3xl border border-dashed border-slate-200">
-                        <Calendar className="w-10 h-10 mx-auto mb-3 text-slate-300" />
+                        <Music className="w-10 h-10 mx-auto mb-3 text-slate-300" />
                         <p className="text-sm font-bold text-slate-500">No upcoming events listed.</p>
                     </div>
                 )}
@@ -202,20 +205,15 @@ export default function VenueDetails() {
                  <div>
                     <h3 className="font-black text-slate-900 text-lg mb-2 flex items-center gap-2"><Info className="w-4 h-4 text-blue-500"/> The Vibe</h3>
                     <p className="text-slate-600 text-sm leading-relaxed font-medium">
-                        {venue.description || "Experience the best atmosphere in Dimapur. Perfect for friends, family, and special occasions."}
+                        {venue.description || "Experience the best atmosphere in Dimapur. Perfect for friends, family, and special occasions. Join us for an unforgettable night."}
                     </p>
                 </div>
             </TabsContent>
 
+            {/* REVIEWS TAB - Using the new component */}
             <TabsContent value="reviews">
-                 <div className="space-y-4">
-                     <div className="p-5 bg-white rounded-3xl border border-slate-100 shadow-sm">
-                         <div className="flex justify-between mb-2">
-                             <div className="font-bold text-slate-900 text-sm flex items-center gap-2">Alex K.</div>
-                             <div className="flex text-yellow-400"><Star className="w-3 h-3 fill-current"/><Star className="w-3 h-3 fill-current"/><Star className="w-3 h-3 fill-current"/><Star className="w-3 h-3 fill-current"/><Star className="w-3 h-3 fill-current"/></div>
-                         </div>
-                         <p className="text-xs text-slate-500 font-medium leading-relaxed">"Amazing ambience and the food was top notch!"</p>
-                     </div>
+                 <div className="pb-20">
+                     <ReviewSection venueId={venue.id} />
                  </div>
             </TabsContent>
           </Tabs>
@@ -228,7 +226,7 @@ export default function VenueDetails() {
           </Button>
       </div>
 
-      {/* --- REVISED BOOKING DRAWER --- */}
+      {/* --- BOOKING DRAWER --- */}
       {isBookingOpen && (
           <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/80 backdrop-blur-sm animate-in fade-in">
               <div className="bg-white w-full max-w-md rounded-t-[2.5rem] shadow-2xl animate-in slide-in-from-bottom duration-300 h-[85vh] flex flex-col relative overflow-hidden">
@@ -240,7 +238,6 @@ export default function VenueDetails() {
                   
                   {bookingStep === 1 ? (
                       <>
-                        {/* SCROLLABLE CONTENT AREA */}
                         <div className="flex-1 overflow-y-auto px-6 pb-24">
                             <h3 className="text-2xl font-black text-slate-900 mb-1">Select Table</h3>
                             <p className="text-sm text-slate-500 mb-6">Pick your spot at {venue.name}</p>
@@ -250,7 +247,7 @@ export default function VenueDetails() {
                                 <SeatMap venueId={venue.id} onSeatSelect={setSelectedSeat} />
                             </div>
 
-                            {/* NEW: GUEST COUNTER */}
+                            {/* GUEST COUNTER */}
                             <div className="mb-8 bg-slate-50 p-4 rounded-2xl border border-slate-100 flex items-center justify-between">
                                 <div>
                                     <h4 className="font-bold text-slate-900">Total Guests</h4>
@@ -274,7 +271,7 @@ export default function VenueDetails() {
                             </div>
                         </div>
 
-                        {/* STICKY BOTTOM BAR (Always Visible) */}
+                        {/* STICKY BOTTOM BAR */}
                         <div className="absolute bottom-0 left-0 w-full bg-white p-6 border-t border-slate-100 shadow-xl z-20">
                             {selectedSeat && (
                                 <div className="flex justify-between items-end mb-4">

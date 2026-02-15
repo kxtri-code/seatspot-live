@@ -78,7 +78,7 @@ export default function BouncerScanner() {
               <div className="w-full max-w-sm aspect-square relative border-2 border-slate-800 rounded-3xl overflow-hidden shadow-2xl">
                   <Scanner 
                       onScan={handleScan} 
-                      components={{ audio: false, finder: false }} // Clean UI
+                      components={{ finder: false }} // REMOVED 'audio: false'
                       styles={{ container: { width: '100%', height: '100%' } }}
                   />
                   {/* Custom Overlay */}

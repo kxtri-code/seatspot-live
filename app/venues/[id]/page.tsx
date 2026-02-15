@@ -21,7 +21,6 @@ export default function VenueDetails() {
   const [venue, setVenue] = useState<any>(null)
   const [events, setEvents] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [following, setFollowing] = useState(false)
   
   // Booking & Wallet State
   const [currentUser, setCurrentUser] = useState<any>(null)
@@ -32,8 +31,6 @@ export default function VenueDetails() {
   const [selectedSeat, setSelectedSeat] = useState<any>(null)
   const [guestCount, setGuestCount] = useState(2)
   
-  const vibeScore = venue?.rating ? Math.round(venue.rating * 20) : 92;
-
   // --- INIT ---
   useEffect(() => {
     if (!id) return
@@ -118,7 +115,7 @@ export default function VenueDetails() {
   if (!venue) return null;
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-24 font-sans relative">
+    <div className="min-h-screen bg-slate-50 pb-32 font-sans relative">
       
       {/* 1. CINEMATIC HERO SECTION */}
       <div className="h-[60vh] relative bg-slate-900 overflow-hidden">
@@ -170,7 +167,7 @@ export default function VenueDetails() {
                   </div>
               </div>
               
-              {/* GOOGLE MAPS BUTTON (NEW) */}
+              {/* GOOGLE MAPS BUTTON */}
               {venue.google_maps_url && (
                   <Button 
                     onClick={() => window.open(venue.google_maps_url, '_blank')}
@@ -196,7 +193,7 @@ export default function VenueDetails() {
                     </p>
                 </div>
                 
-                {/* Amenities Grid (Static for Demo) */}
+                {/* Amenities Grid */}
                 <div className="grid grid-cols-2 gap-4">
                     <div className="bg-slate-50 p-4 rounded-2xl flex items-center gap-3">
                         <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm text-purple-600"><Music className="w-5 h-5"/></div>
@@ -241,8 +238,9 @@ export default function VenueDetails() {
 
       </div>
 
-      {/* 3. FLOATING BOOKING BAR */}
-      <div className="fixed bottom-6 left-6 right-6 z-40">
+      {/* 3. FLOATING BOOKING BAR (THE FIX) */}
+      {/* Changed bottom-6 to bottom-24 to clear the Navigation Bar on mobile */}
+      <div className="fixed bottom-24 md:bottom-6 left-6 right-6 z-40">
           <Button 
             onClick={handleOpenBooking} 
             className="w-full h-16 rounded-[2rem] bg-slate-900 text-white font-black text-lg shadow-2xl shadow-slate-900/40 hover:scale-105 transition-all flex justify-between px-8 items-center"
@@ -254,7 +252,7 @@ export default function VenueDetails() {
           </Button>
       </div>
 
-      {/* 4. BOOKING DRAWER (Glassmorphism) */}
+      {/* 4. BOOKING DRAWER */}
       {isBookingOpen && (
           <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm animate-in fade-in">
               <div className="bg-white w-full max-w-md rounded-t-[2.5rem] shadow-2xl animate-in slide-in-from-bottom duration-300 h-[85vh] flex flex-col relative overflow-hidden">

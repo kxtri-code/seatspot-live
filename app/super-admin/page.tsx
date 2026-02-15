@@ -3,14 +3,15 @@
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import { 
-  Loader2, Save, Layout, ShieldAlert, CheckCircle, Image as ImageIcon, 
-  Type, Link as LinkIcon, Zap, Upload, X, Users, Wallet, TrendingUp, 
-  Search, MoreHorizontal, Menu, Home, Building2, FileText, LogOut
+  Loader2, Save, ShieldAlert, CheckCircle, Image as ImageIcon, 
+  Type, Zap, Upload, X, Users, Wallet, 
+  Search, MoreHorizontal, Menu, Home, Building2, FileText, Plus, MapPin
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Textarea } from '@/components/ui/textarea'
 
+// --- TYPES ---
 type ViewState = 'dashboard' | 'users' | 'venues' | 'cms';
 
 export default function SuperAdmin() {
@@ -32,7 +33,14 @@ export default function SuperAdmin() {
   const [isPostingStory, setIsPostingStory] = useState(false)
   const [topUpAmounts, setTopUpAmounts] = useState<Record<string, string>>({})
 
+  // NEW: Venue Creation State (Custom Modal Logic)
+  const [isAddVenueOpen, setIsAddVenueOpen] = useState(false)
+  const [newVenue, setNewVenue] = useState({ name: '', location: '', type: 'Club', description: '' })
+  const [venueImage, setVenueImage] = useState<File | null>(null)
+  const [isCreatingVenue, setIsCreatingVenue] = useState(false)
+
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const venueImageRef = useRef<HTMLInputElement>(null)
 
   // --- INIT ---
   useEffect(() => {
@@ -53,49 +61,74 @@ export default function SuperAdmin() {
 
   const fetchData = async () => {
       setLoading(true)
-      
       try {
-        // 1. Fetch Assets
         const { data: assetData } = await supabase.from('cms_assets').select('*').order('id')
         if (assetData) setAssets(assetData)
 
-        // 2. Fetch Venues
-        const { data: venueData } = await supabase.from('venues').select('*').order('created_at')
+        const { data: venueData } = await supabase.from('venues').select('*').order('created_at', { ascending: false })
         if (venueData) {
             setVenues(venueData)
             if(venueData.length > 0) setStoryData(prev => ({ ...prev, venueId: venueData[0].id }))
         }
 
-        // 3. ROBUST USER FETCH (The Fix)
-        // Instead of joining, we fetch separately to avoid relationship errors.
-        const { data: profileData, error: pError } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
-        if (pError) throw pError;
-
-        const { data: walletData, error: wError } = await supabase.from('wallets').select('*');
-        if (wError) throw wError;
-
-        // Merge them manually
-        const combinedUsers = profileData.map(profile => {
-            const wallet = walletData.find(w => w.user_id === profile.id);
-            return {
-                ...profile,
-                balance: wallet ? wallet.balance : 0
-            };
-        });
-
-        console.log("Admin Loaded Users:", combinedUsers); // Debug log
-        setUsers(combinedUsers)
-        setFilteredUsers(combinedUsers)
-
+        // Robust User Fetch
+        const { data: profileData } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
+        const { data: walletData } = await supabase.from('wallets').select('*');
+        
+        if (profileData && walletData) {
+            const combinedUsers = profileData.map(profile => {
+                const wallet = walletData.find(w => w.user_id === profile.id);
+                return { ...profile, balance: wallet ? wallet.balance : 0 };
+            });
+            setUsers(combinedUsers)
+            setFilteredUsers(combinedUsers)
+        }
       } catch (err: any) {
           console.error("Admin Load Error:", err.message)
-          alert("Error loading dashboard: " + err.message)
       } finally {
           setLoading(false)
       }
   }
 
   // --- HANDLERS ---
+
+  const handleCreateVenue = async () => {
+      if (!newVenue.name || !newVenue.location || !venueImage) return alert("Please fill all fields and add an image.")
+      
+      setIsCreatingVenue(true)
+      try {
+          // 1. Upload Image
+          const fileExt = venueImage.name.split('.').pop()
+          const fileName = `venue-${Date.now()}.${fileExt}`
+          const { error: uploadError } = await supabase.storage.from('venues').upload(fileName, venueImage)
+          if (uploadError) throw uploadError
+
+          const { data: urlData } = supabase.storage.from('venues').getPublicUrl(fileName)
+
+          // 2. Insert to DB
+          const { error: dbError } = await supabase.from('venues').insert({
+              name: newVenue.name,
+              location: newVenue.location,
+              type: newVenue.type,
+              description: newVenue.description,
+              image_url: urlData.publicUrl,
+              rating: 5.0 // Start with 5 stars
+          })
+          if (dbError) throw dbError
+
+          alert("Venue Launched! 🚀")
+          setIsAddVenueOpen(false)
+          setNewVenue({ name: '', location: '', type: 'Club', description: '' })
+          setVenueImage(null)
+          fetchData() // Refresh list
+
+      } catch (err: any) {
+          alert("Error: " + err.message)
+      } finally {
+          setIsCreatingVenue(false)
+      }
+  }
+
   const handleAssetSave = async (id: string, content: string) => {
     setSavingId(id)
     await supabase.from('cms_assets').update({ content }).eq('id', id)
@@ -123,21 +156,16 @@ export default function SuperAdmin() {
   const handleTopUp = async (userId: string) => {
       const amount = topUpAmounts[userId]
       if (!amount || isNaN(Number(amount))) return alert("Enter valid amount")
-      
       const { error } = await supabase.rpc('admin_topup_wallet', { target_user_id: userId, amount: Number(amount) })
-      
-      if (error) {
-          alert("Failed: " + error.message)
-      } else {
+      if (error) alert("Failed: " + error.message)
+      else {
           alert(`Success! Added ₹${amount}`)
           setTopUpAmounts(prev => ({...prev, [userId]: ''}))
-          fetchData() // Refresh logic handles the update
+          fetchData()
       }
   }
 
   if (loading) return <div className="h-screen flex items-center justify-center bg-slate-950 text-white"><Loader2 className="animate-spin mr-2"/> verifying_god_access...</div>
-
-  // --- COMPONENTS ---
 
   const NavItem = ({ view, icon: Icon, label }: { view: ViewState, icon: any, label: string }) => (
       <button 
@@ -152,7 +180,7 @@ export default function SuperAdmin() {
   return (
     <div className="min-h-screen bg-slate-950 text-white font-sans flex flex-col md:flex-row">
       
-      {/* 1. SIDEBAR (Desktop) */}
+      {/* SIDEBAR */}
       <aside className="hidden md:flex flex-col w-72 bg-slate-950 border-r border-slate-900 h-screen sticky top-0">
           <div className="p-8 pb-4">
               <h1 className="text-2xl font-black flex items-center gap-2 tracking-tighter text-white">
@@ -166,18 +194,9 @@ export default function SuperAdmin() {
               <NavItem view="venues" icon={Building2} label="Venue Manager" />
               <NavItem view="cms" icon={FileText} label="Content Editor" />
           </nav>
-          <div className="p-4 border-t border-slate-900">
-             <div className="bg-slate-900 rounded-xl p-4">
-                 <div className="flex items-center gap-2 mb-2">
-                     <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"/>
-                     <span className="text-xs font-bold text-green-500 uppercase">System Online</span>
-                 </div>
-                 <p className="text-[10px] text-slate-500 font-mono">v2.4.0 (Stable)</p>
-             </div>
-          </div>
       </aside>
 
-      {/* 2. MOBILE HEADER */}
+      {/* MOBILE HEADER */}
       <div className="md:hidden bg-slate-950 border-b border-slate-900 p-4 sticky top-0 z-50 flex justify-between items-center">
           <div className="flex items-center gap-2">
              <ShieldAlert className="text-red-500 w-6 h-6" />
@@ -188,7 +207,7 @@ export default function SuperAdmin() {
           </Button>
       </div>
 
-      {/* 3. MOBILE MENU (Overlay) */}
+      {/* MOBILE MENU */}
       {isMobileMenuOpen && (
           <div className="fixed inset-0 z-40 bg-slate-950/95 backdrop-blur-xl md:hidden pt-24 px-6 space-y-4">
               <NavItem view="dashboard" icon={Home} label="Overview" />
@@ -198,11 +217,11 @@ export default function SuperAdmin() {
           </div>
       )}
 
-      {/* 4. MAIN CONTENT AREA */}
+      {/* MAIN CONTENT */}
       <main className="flex-1 overflow-y-auto bg-black/50">
           <div className="p-4 md:p-8 lg:p-12 max-w-7xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
               
-              {/* VIEW: DASHBOARD OVERVIEW */}
+              {/* DASHBOARD */}
               {currentView === 'dashboard' && (
                   <>
                     <h2 className="text-3xl font-black text-white mb-6">System Overview</h2>
@@ -231,7 +250,7 @@ export default function SuperAdmin() {
                   </>
               )}
 
-              {/* VIEW: USERS & ECONOMY */}
+              {/* USERS */}
               {currentView === 'users' && (
                   <div className="space-y-6">
                      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -297,11 +316,7 @@ export default function SuperAdmin() {
                                             </td>
                                         </tr>
                                     )) : (
-                                        <tr>
-                                            <td colSpan={3} className="p-10 text-center text-slate-500 font-bold">
-                                                No users found. (Check RLS Policies)
-                                            </td>
-                                        </tr>
+                                        <tr><td colSpan={3} className="p-10 text-center text-slate-500 font-bold">No users found.</td></tr>
                                     )}
                                 </tbody>
                             </table>
@@ -310,10 +325,86 @@ export default function SuperAdmin() {
                   </div>
               )}
 
-              {/* VIEW: VENUES */}
+              {/* VENUES */}
               {currentView === 'venues' && (
                   <div className="space-y-6">
-                      <h2 className="text-3xl font-black text-white">Venue Manager</h2>
+                      <div className="flex justify-between items-center">
+                        <h2 className="text-3xl font-black text-white">Venue Manager</h2>
+                        <Button 
+                            onClick={() => setIsAddVenueOpen(true)}
+                            className="bg-blue-600 hover:bg-blue-500 text-white font-bold h-12 px-6 rounded-xl shadow-lg shadow-blue-900/20"
+                        >
+                            <Plus className="w-5 h-5 mr-2" /> Add Venue
+                        </Button>
+                      </div>
+
+                      {/* CUSTOM MODAL FOR ADD VENUE */}
+                      {isAddVenueOpen && (
+                          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in">
+                              <div className="bg-slate-900 w-full max-w-md p-6 rounded-3xl border border-slate-800 shadow-2xl relative">
+                                  <button onClick={() => setIsAddVenueOpen(false)} className="absolute top-4 right-4 text-slate-500 hover:text-white"><X className="w-6 h-6"/></button>
+                                  <h3 className="text-xl font-black text-white mb-6">Launch New Venue</h3>
+                                  
+                                  <div className="space-y-4">
+                                      {/* Image Upload */}
+                                      <div className="space-y-2">
+                                          <label className="text-xs font-bold uppercase text-slate-400">Cover Image</label>
+                                          <div 
+                                              onClick={() => venueImageRef.current?.click()}
+                                              className="h-32 rounded-xl border-2 border-dashed border-slate-700 hover:border-blue-500 cursor-pointer flex flex-col items-center justify-center gap-2 bg-slate-950 transition-colors"
+                                          >
+                                              {venueImage ? (
+                                                  <div className="flex flex-col items-center text-green-500">
+                                                      <CheckCircle className="w-6 h-6 mb-1"/>
+                                                      <span className="text-xs font-bold">{venueImage.name}</span>
+                                                  </div>
+                                              ) : (
+                                                  <>
+                                                      <ImageIcon className="w-8 h-8 text-slate-500"/>
+                                                      <span className="text-xs font-bold text-slate-500">Click to Upload</span>
+                                                  </>
+                                              )}
+                                              <input type="file" ref={venueImageRef} className="hidden" accept="image/*" onChange={(e) => {if(e.target.files?.[0]) setVenueImage(e.target.files[0])}}/>
+                                          </div>
+                                      </div>
+
+                                      <div className="space-y-2">
+                                          <label className="text-xs font-bold uppercase text-slate-400">Venue Name</label>
+                                          <Input value={newVenue.name} onChange={e => setNewVenue({...newVenue, name: e.target.value})} className="bg-black border-slate-700 font-bold" placeholder="e.g. SkyDeck Lounge"/>
+                                      </div>
+
+                                      <div className="grid grid-cols-2 gap-4">
+                                          <div className="space-y-2">
+                                              <label className="text-xs font-bold uppercase text-slate-400">Type</label>
+                                              <select 
+                                                  value={newVenue.type} 
+                                                  onChange={e => setNewVenue({...newVenue, type: e.target.value})} 
+                                                  className="w-full h-10 bg-black border border-slate-700 rounded-md text-white px-3 font-bold text-sm focus:border-blue-500 outline-none"
+                                              >
+                                                  <option value="Club">Club</option>
+                                                  <option value="Cafe">Cafe</option>
+                                                  <option value="Lounge">Lounge</option>
+                                                  <option value="Concert">Concert</option>
+                                              </select>
+                                          </div>
+                                          <div className="space-y-2">
+                                              <label className="text-xs font-bold uppercase text-slate-400">Location</label>
+                                              <Input value={newVenue.location} onChange={e => setNewVenue({...newVenue, location: e.target.value})} className="bg-black border-slate-700 font-bold" placeholder="e.g. Dimapur"/>
+                                          </div>
+                                      </div>
+
+                                      <div className="space-y-2">
+                                          <label className="text-xs font-bold uppercase text-slate-400">Description</label>
+                                          <Textarea value={newVenue.description} onChange={e => setNewVenue({...newVenue, description: e.target.value})} className="bg-black border-slate-700 font-bold" placeholder="Brief vibe check..."/>
+                                      </div>
+
+                                      <Button onClick={handleCreateVenue} disabled={isCreatingVenue} className="w-full bg-green-600 hover:bg-green-500 font-bold h-12 text-lg mt-2">
+                                          {isCreatingVenue ? <Loader2 className="animate-spin"/> : "Launch Live 🚀"}
+                                      </Button>
+                                  </div>
+                              </div>
+                          </div>
+                      )}
                       
                       {/* UPLOADER */}
                       <div className="bg-gradient-to-r from-blue-900/20 to-purple-900/20 p-6 md:p-8 rounded-3xl border border-blue-500/30 relative overflow-hidden">
@@ -344,22 +435,25 @@ export default function SuperAdmin() {
 
                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {venues.map(v => (
-                            <div key={v.id} className="bg-slate-900 p-4 rounded-2xl border border-slate-800 flex justify-between items-center">
+                            <div key={v.id} className="bg-slate-900 p-4 rounded-2xl border border-slate-800 flex justify-between items-center group hover:border-slate-700 transition-all">
                                 <div className="flex items-center gap-4">
-                                    <img src={v.image_url} className="w-14 h-14 rounded-xl object-cover bg-slate-800"/>
+                                    <img src={v.image_url} className="w-14 h-14 rounded-xl object-cover bg-slate-800 border border-slate-700"/>
                                     <div>
-                                        <h4 className="font-bold text-white">{v.name}</h4>
-                                        <p className="text-xs text-slate-500">{v.location}</p>
+                                        <h4 className="font-bold text-white leading-tight">{v.name}</h4>
+                                        <div className="flex items-center gap-2 mt-1">
+                                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">{v.type}</span>
+                                            <span className="text-xs text-slate-500 flex items-center gap-0.5"><MapPin className="w-3 h-3"/> {v.location}</span>
+                                        </div>
                                     </div>
                                 </div>
-                                <Button variant="ghost" size="icon" className="text-slate-500"><MoreHorizontal/></Button>
+                                <Button variant="ghost" size="icon" className="text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity"><MoreHorizontal/></Button>
                             </div>
                         ))}
                      </div>
                   </div>
               )}
 
-              {/* VIEW: CMS */}
+              {/* CMS */}
               {currentView === 'cms' && (
                   <div className="space-y-6">
                       <h2 className="text-3xl font-black text-white">Content Editor</h2>

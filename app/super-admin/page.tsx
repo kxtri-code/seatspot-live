@@ -5,14 +5,14 @@ import { supabase } from '@/lib/supabaseClient'
 import { 
   Loader2, Save, ShieldAlert, CheckCircle, Image as ImageIcon, 
   Type, Zap, Upload, X, Users, Wallet, 
-  Search, MoreHorizontal, Menu, Home, Building2, FileText, Plus, MapPin
+  Search, MoreHorizontal, Menu, Home, Building2, FileText, Plus, MapPin, Settings, DollarSign
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 
 // --- TYPES ---
-type ViewState = 'dashboard' | 'users' | 'venues' | 'cms';
+type ViewState = 'dashboard' | 'users' | 'venues' | 'cms' | 'settings';
 
 export default function SuperAdmin() {
   const [loading, setLoading] = useState(true)
@@ -25,6 +25,7 @@ export default function SuperAdmin() {
   const [users, setUsers] = useState<any[]>([])
   const [filteredUsers, setFilteredUsers] = useState<any[]>([])
   const [searchQuery, setSearchQuery] = useState('')
+  const [systemConfig, setSystemConfig] = useState({ signup_bonus: 5000 })
   
   // Action State
   const [savingId, setSavingId] = useState<string | null>(null)
@@ -33,9 +34,9 @@ export default function SuperAdmin() {
   const [isPostingStory, setIsPostingStory] = useState(false)
   const [topUpAmounts, setTopUpAmounts] = useState<Record<string, string>>({})
 
-  // NEW: Venue Creation State (Custom Modal Logic)
+  // Venue Creation State
   const [isAddVenueOpen, setIsAddVenueOpen] = useState(false)
-  const [newVenue, setNewVenue] = useState({ name: '', location: '', type: 'Club', description: '' })
+  const [newVenue, setNewVenue] = useState({ name: '', location: '', type: 'Club', description: '', google_maps_url: '' })
   const [venueImage, setVenueImage] = useState<File | null>(null)
   const [isCreatingVenue, setIsCreatingVenue] = useState(false)
 
@@ -71,6 +72,10 @@ export default function SuperAdmin() {
             if(venueData.length > 0) setStoryData(prev => ({ ...prev, venueId: venueData[0].id }))
         }
 
+        // Fetch System Config
+        const { data: configData } = await supabase.from('system_config').select('*').eq('id', 1).single()
+        if (configData) setSystemConfig(configData)
+
         // Robust User Fetch
         const { data: profileData } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
         const { data: walletData } = await supabase.from('wallets').select('*');
@@ -92,6 +97,12 @@ export default function SuperAdmin() {
 
   // --- HANDLERS ---
 
+  const handleUpdateBonus = async () => {
+      const { error } = await supabase.from('system_config').update({ signup_bonus: systemConfig.signup_bonus }).eq('id', 1)
+      if (error) alert("Error updating bonus: " + error.message)
+      else alert("Signup Bonus Updated! New users will receive ₹" + systemConfig.signup_bonus)
+  }
+
   const handleCreateVenue = async () => {
       if (!newVenue.name || !newVenue.location || !venueImage) return alert("Please fill all fields and add an image.")
       
@@ -111,16 +122,17 @@ export default function SuperAdmin() {
               location: newVenue.location,
               type: newVenue.type,
               description: newVenue.description,
+              google_maps_url: newVenue.google_maps_url, // NEW FIELD
               image_url: urlData.publicUrl,
-              rating: 5.0 // Start with 5 stars
+              rating: 5.0 
           })
           if (dbError) throw dbError
 
           alert("Venue Launched! 🚀")
           setIsAddVenueOpen(false)
-          setNewVenue({ name: '', location: '', type: 'Club', description: '' })
+          setNewVenue({ name: '', location: '', type: 'Club', description: '', google_maps_url: '' })
           setVenueImage(null)
-          fetchData() // Refresh list
+          fetchData() 
 
       } catch (err: any) {
           alert("Error: " + err.message)
@@ -193,6 +205,7 @@ export default function SuperAdmin() {
               <NavItem view="users" icon={Users} label="User Economy" />
               <NavItem view="venues" icon={Building2} label="Venue Manager" />
               <NavItem view="cms" icon={FileText} label="Content Editor" />
+              <NavItem view="settings" icon={Settings} label="System Settings" />
           </nav>
       </aside>
 
@@ -214,6 +227,7 @@ export default function SuperAdmin() {
               <NavItem view="users" icon={Users} label="User Economy" />
               <NavItem view="venues" icon={Building2} label="Venue Manager" />
               <NavItem view="cms" icon={FileText} label="Content Editor" />
+              <NavItem view="settings" icon={Settings} label="System Settings" />
           </div>
       )}
 
@@ -243,8 +257,8 @@ export default function SuperAdmin() {
                         </div>
                          <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800">
                             <Zap className="w-8 h-8 text-yellow-500 mb-4" />
-                            <h3 className="text-slate-500 text-xs font-bold uppercase tracking-widest">System Health</h3>
-                            <p className="text-3xl font-black text-white mt-1">100%</p>
+                            <h3 className="text-slate-500 text-xs font-bold uppercase tracking-widest">Bonus Amount</h3>
+                            <p className="text-3xl font-black text-white mt-1">₹{systemConfig.signup_bonus}</p>
                         </div>
                     </div>
                   </>
@@ -338,7 +352,7 @@ export default function SuperAdmin() {
                         </Button>
                       </div>
 
-                      {/* CUSTOM MODAL FOR ADD VENUE */}
+                      {/* ADD VENUE MODAL */}
                       {isAddVenueOpen && (
                           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in">
                               <div className="bg-slate-900 w-full max-w-md p-6 rounded-3xl border border-slate-800 shadow-2xl relative">
@@ -391,6 +405,12 @@ export default function SuperAdmin() {
                                               <label className="text-xs font-bold uppercase text-slate-400">Location</label>
                                               <Input value={newVenue.location} onChange={e => setNewVenue({...newVenue, location: e.target.value})} className="bg-black border-slate-700 font-bold" placeholder="e.g. Dimapur"/>
                                           </div>
+                                      </div>
+
+                                      {/* NEW: Google Maps Link */}
+                                      <div className="space-y-2">
+                                          <label className="text-xs font-bold uppercase text-slate-400">Google Maps Link</label>
+                                          <Input value={newVenue.google_maps_url} onChange={e => setNewVenue({...newVenue, google_maps_url: e.target.value})} className="bg-black border-slate-700 font-bold" placeholder="https://maps.google.com/..."/>
                                       </div>
 
                                       <div className="space-y-2">
@@ -485,6 +505,43 @@ export default function SuperAdmin() {
                                   </div>
                               </div>
                           ))}
+                      </div>
+                  </div>
+              )}
+
+              {/* SETTINGS (NEW) */}
+              {currentView === 'settings' && (
+                  <div className="space-y-6">
+                      <h2 className="text-3xl font-black text-white">System Settings</h2>
+                      <div className="bg-slate-900 p-8 rounded-3xl border border-slate-800 shadow-xl max-w-2xl">
+                          <div className="flex items-start gap-4 mb-8">
+                              <div className="w-12 h-12 bg-yellow-500/10 rounded-xl flex items-center justify-center border border-yellow-500/20">
+                                  <DollarSign className="w-6 h-6 text-yellow-500"/>
+                              </div>
+                              <div>
+                                  <h3 className="text-xl font-bold text-white">New User Bonus</h3>
+                                  <p className="text-slate-400 text-sm mt-1">
+                                      Automatically deposit this amount into the wallet of every new user who signs up.
+                                  </p>
+                              </div>
+                          </div>
+                          <div className="flex gap-4 items-end">
+                              <div className="flex-1">
+                                  <label className="text-xs font-bold uppercase text-slate-500 mb-2 block">Bonus Amount (₹)</label>
+                                  <Input 
+                                      type="number" 
+                                      value={systemConfig.signup_bonus} 
+                                      onChange={(e) => setSystemConfig({...systemConfig, signup_bonus: Number(e.target.value)})}
+                                      className="bg-black border-slate-700 text-white font-mono text-lg h-14"
+                                  />
+                              </div>
+                              <Button 
+                                  onClick={handleUpdateBonus} 
+                                  className="h-14 px-8 bg-blue-600 hover:bg-blue-500 text-white font-bold text-lg rounded-xl"
+                              >
+                                  <Save className="w-5 h-5 mr-2" /> Save Config
+                              </Button>
+                          </div>
                       </div>
                   </div>
               )}

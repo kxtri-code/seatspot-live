@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabaseClient'
 import { Loader2, MapPin, Star, ArrowLeft, Compass, Heart, Ticket, Flame, Zap, Coffee, Music, Utensils } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import StoryViewer from '@/components/StoryViewer'
+import StoryUploader from '@/components/StoryUploader' // <--- IMPORT THIS
 
 function ExploreContent() {
   const searchParams = useSearchParams()
@@ -22,7 +23,9 @@ function ExploreContent() {
   const [matches, setMatches] = useState<any[]>([])
   const [trending, setTrending] = useState<any[]>([])
   const [topPicks, setTopPicks] = useState<any[]>([])
+  
   const [selectedStoryIndex, setSelectedStoryIndex] = useState<number | null>(null)
+  const [isUploading, setIsUploading] = useState(false) // <--- UPLOAD STATE
 
   const getVibeIcon = (type: string) => {
     if (type?.toLowerCase().includes('cafe')) return <Coffee className="w-4 h-4" />
@@ -30,9 +33,10 @@ function ExploreContent() {
     return <Utensils className="w-4 h-4" />
   }
 
-  useEffect(() => {
-    const loadSystemData = async () => {
-      setLoading(true);
+  // Define loadSystemData outside useEffect so we can call it after upload
+  const loadSystemData = async () => {
+      // Don't set full loading to true on refresh to keep UI smooth
+      // setLoading(true); 
       
       // 1. Fetch Venues
       const { data: venueData } = await supabase.from('venues').select('*').order('created_at', { ascending: false });
@@ -48,7 +52,7 @@ function ExploreContent() {
       const { data: eventData } = await supabase.from('events').select('*');
       if (eventData) setEvents(eventData);
 
-      // 3. FETCH REAL STORIES (Joined with Venue Data)
+      // 3. FETCH STORIES
       const { data: storyData } = await supabase
         .from('stories')
         .select(`
@@ -59,21 +63,28 @@ function ExploreContent() {
         .order('created_at', { ascending: false })
 
       if (storyData) {
-          // FIX: Added (s: any) here to silence the TypeScript error
           const formatted = storyData.map((s: any) => ({
               id: s.id,
-              name: s.venues?.name || 'Venue', // Now TypeScript won't complain
+              name: s.venues?.name || 'Venue', 
               img: s.media_url,
-              venue_img: s.venues?.image_url, // Fixed here too
+              venue_img: s.venues?.image_url, 
               hasUpdate: true
           }))
           setStories(formatted)
       }
-
       setLoading(false);
-    };
+  };
+
+  useEffect(() => {
+    setLoading(true)
     loadSystemData();
   }, [vibe]);
+
+  const handleUploadComplete = () => {
+      setIsUploading(false)
+      loadSystemData() // Refresh stories immediately
+      alert("Story Posted! 📸")
+  }
 
   const VenueCard = ({ venue, tag, color }: { venue: any, tag?: string, color?: string }) => (
     <div onClick={() => router.push(`/venues/${venue.id}`)} className="min-w-[280px] bg-white rounded-[2rem] overflow-hidden shadow-sm border border-slate-100 active:scale-95 transition-all cursor-pointer group relative">
@@ -93,9 +104,13 @@ function ExploreContent() {
   return (
     <div className="min-h-screen bg-slate-50 pb-20 font-sans">
       
-      {/* STORY VIEWER */}
+      {/* --- MODALS --- */}
       {selectedStoryIndex !== null && (
           <StoryViewer stories={stories} initialIndex={selectedStoryIndex} onClose={() => setSelectedStoryIndex(null)} />
+      )}
+
+      {isUploading && (
+          <StoryUploader onClose={() => setIsUploading(false)} onUploadComplete={handleUploadComplete} />
       )}
       
       {/* HEADER */}
@@ -111,10 +126,14 @@ function ExploreContent() {
         
         {/* STORIES SECTION */}
         <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar px-1 min-h-[90px]">
-            {/* My Story */}
+            
+            {/* My Story Button (NOW FUNCTIONAL) */}
             <div className="flex flex-col items-center gap-1 shrink-0">
-                <div className="w-16 h-16 rounded-full bg-slate-100 border-2 border-slate-200 flex items-center justify-center relative active:scale-95 transition-transform cursor-pointer">
-                    <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center absolute bottom-0 right-0 border-2 border-white text-white font-bold">+</div>
+                <div 
+                    onClick={() => setIsUploading(true)} 
+                    className="w-16 h-16 rounded-full bg-slate-100 border-2 border-slate-200 flex items-center justify-center relative active:scale-95 transition-transform cursor-pointer hover:border-blue-400 group"
+                >
+                    <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center absolute bottom-0 right-0 border-2 border-white text-white font-bold group-hover:scale-110 transition-transform">+</div>
                 </div>
                 <span className="text-[10px] font-bold text-slate-400">My Story</span>
             </div>
@@ -127,11 +146,11 @@ function ExploreContent() {
                             <img src={story.img} className="w-full h-full object-cover" alt={story.name} />
                         </div>
                     </div>
-                    <span className="text-[10px] font-bold text-slate-600">{story.name}</span>
+                    <span className="text-[10px] font-bold text-slate-600 truncate max-w-[64px]">{story.name}</span>
                 </div>
             )) : (
                <div className="flex items-center text-xs text-slate-400 font-medium pl-2">
-                   No live updates right now.
+                   No live updates.
                </div>
             )}
         </div>

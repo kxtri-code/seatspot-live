@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import { useRouter } from 'next/navigation'
-import { Loader2, User, Save, LogOut, Camera, Mail, Shield, Bell, Key, Wallet, Sparkles, Eye, EyeOff } from 'lucide-react'
+import { Loader2, User, Save, LogOut, Camera, Mail, Shield, Bell, Key, Wallet, Sparkles, Eye, EyeOff, Globe } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -21,7 +21,7 @@ export default function Profile() {
     username: '',
     avatar_url: '',
     marketing_opt_in: false,
-    website: ''
+    website: '' // Now this matches the DB
   })
   const [walletBalance, setWalletBalance] = useState(0)
 
@@ -49,7 +49,7 @@ export default function Profile() {
               username: profileData.data.username || '',
               avatar_url: profileData.data.avatar_url || '',
               marketing_opt_in: profileData.data.marketing_opt_in || false,
-              website: ''
+              website: profileData.data.website || ''
           })
       }
       if (walletData.data) setWalletBalance(walletData.data.balance)
@@ -100,7 +100,6 @@ export default function Profile() {
       try {
           const file = e.target.files[0]
           const fileExt = file.name.split('.').pop()
-          // FIX: Changed Math.now() to Date.now()
           const fileName = `${user.id}-${Date.now()}.${fileExt}`
           
           // Upload
@@ -215,6 +214,19 @@ export default function Profile() {
                             className="h-12 bg-slate-50 border-slate-100 focus:bg-white transition-all font-bold"
                             placeholder="@handle"
                           />
+                      </div>
+                      {/* ADDED: Website Input */}
+                      <div className="col-span-1 md:col-span-2 space-y-2">
+                          <Label className="text-xs font-bold uppercase text-slate-400">Website / Social</Label>
+                          <div className="relative">
+                            <Globe className="absolute left-4 top-4 w-4 h-4 text-slate-400" />
+                            <Input 
+                                value={profile.website} 
+                                onChange={(e) => setProfile({...profile, website: e.target.value})} 
+                                className="h-12 pl-10 bg-slate-50 border-slate-100 focus:bg-white transition-all font-bold"
+                                placeholder="https://instagram.com/..."
+                            />
+                          </div>
                       </div>
                   </div>
               </div>

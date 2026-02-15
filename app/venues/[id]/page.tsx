@@ -14,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import SeatMap from '@/components/SeatMap'
 import ReviewSection from '@/components/ReviewSection'
 
-// --- INTERNAL AVATAR COMPONENTS (Fixes Import Error) ---
+// --- INTERNAL AVATAR COMPONENTS (Prevents Import Errors) ---
 const Avatar = forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(({ className, ...props }, ref) => (
   <div ref={ref} className={`relative flex h-10 w-10 shrink-0 overflow-hidden rounded-full ${className || ''}`} {...props} />
 ))
@@ -29,7 +29,6 @@ const AvatarFallback = forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivEl
   <div ref={ref} className={`flex h-full w-full items-center justify-center rounded-full bg-slate-100 text-slate-500 font-bold ${className || ''}`} {...props} />
 ))
 AvatarFallback.displayName = "AvatarFallback"
-// -------------------------------------------------------
 
 export default function VenueDetails() {
   const params = useParams()
@@ -95,7 +94,6 @@ export default function VenueDetails() {
       setSelectedEvent(event)
       setIsEventOpen(true)
       
-      // Fetch Stats & User Status
       const { data: attendees } = await supabase.from('event_attendees').select('status, user_id').eq('event_id', event.id)
       if (attendees) {
           const going = attendees.filter(a => a.status === 'going').length
@@ -108,7 +106,6 @@ export default function VenueDetails() {
           }
       }
 
-      // Fetch Comments
       fetchComments(event.id)
   }
 
@@ -122,9 +119,7 @@ export default function VenueDetails() {
   }
 
   const handleStatus = async (status: 'interested' | 'going' | 'not_going') => {
-      if (!currentUser) return router.push('/login')
-      
-      // Optimistic Update
+      if (!currentUser) return router.push('/profile')
       setUserStatus(status) 
       
       const { error } = await supabase.from('event_attendees').upsert({
@@ -135,7 +130,6 @@ export default function VenueDetails() {
 
       if (error) alert("Error updating status")
       
-      // Refresh Stats
       const { data: attendees } = await supabase.from('event_attendees').select('status').eq('event_id', selectedEvent.id)
       if(attendees) {
           setEventStats({
@@ -149,13 +143,19 @@ export default function VenueDetails() {
       if (!newComment.trim()) return
       if (!currentUser) return router.push('/login')
 
-      await supabase.from('event_comments').insert({
-          event_id: selectedEvent.id,
-          user_id: currentUser.id,
-          content: newComment
-      })
-      setNewComment('')
-      fetchComments(selectedEvent.id)
+      try {
+          const { error } = await supabase.from('event_comments').insert({
+              event_id: selectedEvent.id,
+              user_id: currentUser.id,
+              content: newComment
+          })
+
+          if (error) throw error
+          setNewComment('')
+          await fetchComments(selectedEvent.id)
+      } catch (err: any) {
+          alert("Failed to post: " + err.message)
+      }
   }
 
   // --- BOOKING LOGIC ---
@@ -325,17 +325,13 @@ export default function VenueDetails() {
           </Button>
       </div>
 
-      {/* 4. EVENT DETAILS DRAWER (NEW!) */}
+      {/* 4. EVENT DETAILS DRAWER */}
       {isEventOpen && selectedEvent && (
           <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm animate-in fade-in">
               <div className="bg-white w-full max-w-md rounded-t-[2.5rem] shadow-2xl h-[90vh] flex flex-col relative overflow-hidden animate-in slide-in-from-bottom duration-300">
-                  
-                  {/* Close Button */}
                   <button onClick={() => setIsEventOpen(false)} className="absolute top-4 right-4 z-20 w-8 h-8 bg-black/20 hover:bg-black/30 rounded-full flex items-center justify-center text-white backdrop-blur-md">
                       <X className="w-4 h-4" />
                   </button>
-
-                  {/* Header Image */}
                   <div className="h-64 relative shrink-0">
                       <img src={selectedEvent.image_url} className="w-full h-full object-cover" />
                       <div className="absolute inset-0 bg-gradient-to-t from-white via-transparent to-transparent" />
@@ -344,11 +340,7 @@ export default function VenueDetails() {
                            <p className="text-slate-500 font-bold text-sm mt-1">{new Date(selectedEvent.date).toDateString()} • {new Date(selectedEvent.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
                       </div>
                   </div>
-
-                  {/* Scrollable Content */}
                   <div className="flex-1 overflow-y-auto px-6 pb-24">
-                      
-                      {/* VIBE METER */}
                       <div className="flex items-center gap-4 mb-8 bg-slate-50 p-4 rounded-2xl border border-slate-100">
                           <div className="flex-1">
                               <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Vibe Meter</p>
@@ -361,8 +353,6 @@ export default function VenueDetails() {
                               <Flame className={`w-6 h-6 ${eventStats.going > 10 ? 'text-red-500 animate-pulse' : 'text-slate-300'}`} />
                           </div>
                       </div>
-
-                      {/* SOCIAL ACTIONS */}
                       <div className="grid grid-cols-3 gap-3 mb-8">
                           <button onClick={() => handleStatus('interested')} className={`py-3 rounded-xl font-bold text-xs flex flex-col items-center gap-1 transition-all ${userStatus === 'interested' ? 'bg-blue-100 text-blue-700 ring-2 ring-blue-500' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
                               <Star className="w-4 h-4" /> Interested
@@ -374,8 +364,6 @@ export default function VenueDetails() {
                               <X className="w-4 h-4" /> Not Going
                           </button>
                       </div>
-
-                      {/* TICKET ACTION */}
                       <div className="mb-8">
                           {selectedEvent.ticket_type === 'paid' && (
                               <Button onClick={handleOpenBooking} className="w-full h-12 bg-black text-white font-bold rounded-xl shadow-lg">
@@ -398,8 +386,6 @@ export default function VenueDetails() {
                               </div>
                           )}
                       </div>
-
-                      {/* COMMENTS */}
                       <div>
                           <h4 className="font-bold text-slate-900 mb-4 flex items-center gap-2"><MessageSquare className="w-4 h-4"/> Hype Chat</h4>
                           <div className="space-y-4 mb-4">
@@ -416,7 +402,6 @@ export default function VenueDetails() {
                                   </div>
                               )) : <p className="text-sm text-slate-400 italic">No comments yet. Start the hype!</p>}
                           </div>
-                          
                           <div className="flex gap-2 relative">
                               <Input 
                                   value={newComment}
@@ -439,12 +424,10 @@ export default function VenueDetails() {
       {isBookingOpen && (
           <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm animate-in fade-in">
               <div className="bg-white w-full max-w-md rounded-t-[2.5rem] shadow-2xl animate-in slide-in-from-bottom duration-300 h-[85vh] flex flex-col relative overflow-hidden">
-                  
                   <div className="w-full pt-4 pb-2 bg-white z-10 flex justify-center">
                     <div className="w-12 h-1.5 bg-slate-200 rounded-full" />
                     <button onClick={() => setIsBookingOpen(false)} className="absolute top-4 right-6 text-slate-400"><X className="w-6 h-6"/></button>
                   </div>
-                  
                   {bookingStep === 1 ? (
                       <>
                         <div className="flex-1 overflow-y-auto px-6 pb-24">

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import { useRouter } from 'next/navigation'
-import { Loader2, User, Save, LogOut, Camera, Mail, Shield, Bell, Key, Wallet, Sparkles, ChevronRight } from 'lucide-react'
+import { Loader2, User, Save, LogOut, Camera, Mail, Shield, Bell, Key, Wallet, Sparkles, Eye, EyeOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -24,6 +24,10 @@ export default function Profile() {
     website: ''
   })
   const [walletBalance, setWalletBalance] = useState(0)
+
+  // Password State
+  const [newPassword, setNewPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
 
   // Fetch Data
   const getProfile = useCallback(async () => {
@@ -59,21 +63,32 @@ export default function Profile() {
 
   useEffect(() => { getProfile() }, [getProfile])
 
-  // Handlers
+  // --- HANDLERS ---
+
   const handleSave = async () => {
       setSaving(true)
       try {
+          // 1. Update Profile Data
           const updates = {
               id: user.id,
               ...profile,
               updated_at: new Date().toISOString(),
           }
-          // The fix: UPSERT handles both new and existing profiles
-          const { error } = await supabase.from('profiles').upsert(updates)
-          if (error) throw error
-          alert("Settings Saved ✨")
+          const { error: profileError } = await supabase.from('profiles').upsert(updates)
+          if (profileError) throw profileError
+
+          // 2. Update Password (If typed)
+          if (newPassword.trim()) {
+              const { error: pwError } = await supabase.auth.updateUser({ password: newPassword })
+              if (pwError) throw pwError
+              setNewPassword('') // Clear after save
+              alert("Settings & Password Updated! 🔒")
+          } else {
+              alert("Profile Updated! ✨")
+          }
+
       } catch (err: any) {
-          alert(err.message)
+          alert("Error: " + err.message)
       } finally {
           setSaving(false)
       }
@@ -85,14 +100,18 @@ export default function Profile() {
       try {
           const file = e.target.files[0]
           const fileExt = file.name.split('.').pop()
-          const fileName = `${user.id}-${Math.random()}.${fileExt}`
+          // FIX: Changed Math.now() to Date.now()
+          const fileName = `${user.id}-${Date.now()}.${fileExt}`
+          
+          // Upload
           const { error } = await supabase.storage.from('stories').upload(fileName, file)
           if (error) throw error
           
+          // Get URL
           const { data } = supabase.storage.from('stories').getPublicUrl(fileName)
           setProfile(prev => ({ ...prev, avatar_url: data.publicUrl }))
           
-          // Auto-save after upload
+          // Auto-save
           await supabase.from('profiles').upsert({ 
               id: user.id, 
               avatar_url: data.publicUrl,
@@ -105,20 +124,12 @@ export default function Profile() {
       }
   }
 
-  const handlePasswordReset = async () => {
-      const email = prompt("Confirm your email to receive a reset link:")
-      if(email) {
-          await supabase.auth.resetPasswordForEmail(email)
-          alert("Check your inbox for the reset link!")
-      }
-  }
-
   if (loading) return <div className="h-screen flex items-center justify-center bg-slate-50"><Loader2 className="animate-spin text-slate-900"/></div>
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans pb-20">
       
-      {/* 1. HEADER (Glassmorphism) */}
+      {/* HEADER */}
       <div className="sticky top-0 z-30 bg-white/80 backdrop-blur-xl border-b border-slate-200 px-6 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3">
               <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
@@ -126,16 +137,15 @@ export default function Profile() {
               </div>
               <h1 className="text-lg font-black text-slate-900 tracking-tight">Account Center</h1>
           </div>
-          <Button variant="ghost" onClick={async () => { await supabase.auth.signOut(); router.push('/'); }} className="text-red-500 hover:bg-red-50 hover:text-red-600 font-bold text-xs uppercase tracking-widest">
+          <Button variant="ghost" onClick={async () => { await supabase.auth.signOut(); router.push('/'); }} className="text-red-500 hover:bg-red-50 font-bold text-xs uppercase tracking-widest">
               Log Out <LogOut className="w-3 h-3 ml-2" />
           </Button>
       </div>
 
       <div className="max-w-5xl mx-auto p-6 grid grid-cols-1 md:grid-cols-3 gap-6 animate-in slide-in-from-bottom-4 duration-500">
           
-          {/* COL 1: IDENTITY CARD (Tall) */}
+          {/* COL 1: IDENTITY CARD */}
           <div className="md:col-span-1 bg-white rounded-[2rem] p-6 border border-slate-100 shadow-xl shadow-slate-200/50 flex flex-col items-center relative overflow-hidden group">
-              {/* Background Decoration */}
               <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-br from-blue-600 to-purple-600 opacity-10 group-hover:opacity-20 transition-opacity" />
               
               <div className="relative mt-8 mb-4">
@@ -157,7 +167,7 @@ export default function Profile() {
               <h2 className="text-2xl font-black text-slate-900 text-center mb-1">{profile.full_name || 'Anonymous User'}</h2>
               <p className="text-slate-400 font-bold text-sm mb-6">@{profile.username || 'username'}</p>
 
-              {/* Wallet Mini-Card */}
+              {/* Wallet Card */}
               <div className="w-full bg-slate-900 rounded-2xl p-4 text-white mb-6 relative overflow-hidden">
                   <div className="absolute -right-4 -top-4 w-16 h-16 bg-white/10 rounded-full blur-xl" />
                   <div className="flex justify-between items-center mb-2">
@@ -183,7 +193,7 @@ export default function Profile() {
           {/* COL 2 & 3: SETTINGS GRID */}
           <div className="md:col-span-2 space-y-6">
               
-              {/* 1. PERSONAL DETAILS (Wide Card) */}
+              {/* 1. PERSONAL DETAILS */}
               <div className="bg-white rounded-[2rem] p-8 border border-slate-100 shadow-sm">
                   <h3 className="text-lg font-black text-slate-900 mb-6 flex items-center gap-2">
                       <User className="w-5 h-5 text-blue-600" /> Personal Details
@@ -212,18 +222,18 @@ export default function Profile() {
               {/* 2. SPLIT ROW: PREFERENCES & SECURITY */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   
-                  {/* Marketing Preferences */}
+                  {/* Marketing */}
                   <div className="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm flex flex-col justify-between">
                       <div>
                           <h3 className="font-bold text-slate-900 mb-2 flex items-center gap-2">
-                              <Bell className="w-4 h-4 text-purple-500" /> Notifications
+                              <Bell className="w-4 h-4 text-purple-500" /> Preferences
                           </h3>
                           <p className="text-xs text-slate-500 font-medium leading-relaxed mb-6">
-                              Receive exclusive offers, venue updates, and party invites directly to your inbox.
+                              Receive exclusive offers, venue updates, and party invites directly.
                           </p>
                       </div>
                       <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl">
-                          <span className="text-sm font-bold text-slate-700">Email Marketing</span>
+                          <span className="text-sm font-bold text-slate-700">Email Updates</span>
                           <Switch 
                             checked={profile.marketing_opt_in}
                             onCheckedChange={(v) => setProfile({...profile, marketing_opt_in: v})}
@@ -231,19 +241,32 @@ export default function Profile() {
                       </div>
                   </div>
 
-                  {/* Security */}
+                  {/* SECURITY */}
                   <div className="bg-white rounded-[2rem] p-6 border border-slate-100 shadow-sm flex flex-col justify-between">
                       <div>
                           <h3 className="font-bold text-slate-900 mb-2 flex items-center gap-2">
-                              <Key className="w-4 h-4 text-orange-500" /> Security
+                              <Key className="w-4 h-4 text-orange-500" /> Change Password
                           </h3>
-                          <p className="text-xs text-slate-500 font-medium leading-relaxed mb-6">
-                              Manage your password and account access securely.
+                          <p className="text-xs text-slate-500 font-medium leading-relaxed mb-4">
+                              Update your password securely right here.
                           </p>
                       </div>
-                      <Button onClick={handlePasswordReset} variant="outline" className="w-full justify-between h-12 rounded-xl font-bold border-slate-200 hover:bg-slate-50 hover:text-slate-900">
-                          Reset Password <ChevronRight className="w-4 h-4 text-slate-400"/>
-                      </Button>
+                      <div className="relative">
+                          <Input 
+                              type={showPassword ? "text" : "password"}
+                              placeholder="New Password"
+                              value={newPassword}
+                              onChange={(e) => setNewPassword(e.target.value)}
+                              className="h-12 pr-10 bg-slate-50 border-slate-100 focus:bg-white transition-all font-bold"
+                          />
+                          <button 
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute right-3 top-3 text-slate-400 hover:text-slate-600"
+                          >
+                              {showPassword ? <EyeOff className="w-5 h-5"/> : <Eye className="w-5 h-5"/>}
+                          </button>
+                      </div>
                   </div>
               </div>
 

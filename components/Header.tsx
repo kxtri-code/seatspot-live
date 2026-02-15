@@ -2,12 +2,14 @@
 
 import { usePathname, useRouter } from 'next/navigation'
 import UserAvatar from '@/components/UserAvatar'
+import NotificationBell from '@/components/NotificationBell' // <--- NEW IMPORT
 
 export default function Header() {
   const router = useRouter()
   const pathname = usePathname()
 
   // STRICT CHECK: If on Home Page, render NOTHING.
+  // (The Home Page has its own transparent header)
   if (pathname === '/') return null
 
   return (
@@ -28,8 +30,12 @@ export default function Header() {
         <button onClick={() => router.push('/tickets')} className="text-sm font-bold text-slate-500 hover:text-slate-900 transition-colors">Wallet</button>
       </nav>
 
-      {/* PROFILE AVATAR (Top Right) */}
+      {/* RIGHT SIDE ACTIONS */}
       <div className="flex items-center gap-4">
+        {/* NEW NOTIFICATION BELL */}
+        <NotificationBell />
+        
+        {/* PROFILE AVATAR */}
         <UserAvatar className="w-9 h-9" />
       </div>
     </header>

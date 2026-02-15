@@ -4,12 +4,12 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 import { 
-  Loader2, ArrowLeft, MapPin, Star, Flame, Music, Info, Minus, Plus, CheckCircle 
+  Loader2, ArrowLeft, MapPin, Star, Flame, Music, Info, Minus, Plus, CheckCircle, Wallet
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import SeatMap from '@/components/SeatMap'
-import ReviewSection from '@/components/ReviewSection' // <--- Imported here
+import ReviewSection from '@/components/ReviewSection'
 
 export default function VenueDetails() {
   const params = useParams()
@@ -22,15 +22,16 @@ export default function VenueDetails() {
   const [loading, setLoading] = useState(true)
   const [following, setFollowing] = useState(false)
   
-  // Booking State
+  // Booking & Wallet State
   const [currentUser, setCurrentUser] = useState<any>(null)
+  const [walletBalance, setWalletBalance] = useState<number>(0)
   const [isBookingOpen, setIsBookingOpen] = useState(false)
   const [bookingStep, setBookingStep] = useState(1) 
   const [isBookingLoading, setIsBookingLoading] = useState(false)
   const [selectedSeat, setSelectedSeat] = useState<any>(null)
   const [guestCount, setGuestCount] = useState(2)
   
-  const vibeScore = venue?.rating ? Math.round(venue.rating * 20) : 92; // 5 stars = 100 vibe
+  const vibeScore = venue?.rating ? Math.round(venue.rating * 20) : 92;
 
   // --- INIT ---
   useEffect(() => {
@@ -41,22 +42,18 @@ export default function VenueDetails() {
       try {
         const { data: { user } } = await supabase.auth.getUser()
         setCurrentUser(user)
+        
+        // Fetch Wallet if logged in
+        if (user) {
+            const { data: w } = await supabase.from('wallets').select('balance').eq('user_id', user.id).single()
+            if (w) setWalletBalance(w.balance)
+        }
 
-        const { data: vData, error: vError } = await supabase
-          .from('venues')
-          .select('*')
-          .eq('id', id)
-          .single()
-
+        const { data: vData, error: vError } = await supabase.from('venues').select('*').eq('id', id).single()
         if (vError) throw vError
         setVenue(vData)
 
-        const { data: eData } = await supabase
-          .from('events')
-          .select('*')
-          .eq('venue_id', id)
-          .gte('date', new Date().toISOString()) 
-        
+        const { data: eData } = await supabase.from('events').select('*').eq('venue_id', id).gte('date', new Date().toISOString()) 
         if (eData) setEvents(eData)
 
       } catch (err) {
@@ -72,35 +69,33 @@ export default function VenueDetails() {
   const handleOpenBooking = () => {
       if (!currentUser) {
           const confirmLogin = confirm("You need to login to book a table. Go to login?")
-          if (confirmLogin) router.push('/profile') // Redirect to profile login
+          if (confirmLogin) router.push('/profile')
           return
       }
       setIsBookingOpen(true)
   }
 
+  // --- THE NEW PAYMENT LOGIC ---
   const handleBookingSubmit = async () => {
-    if (!selectedSeat) {
-        alert("Please select a seat!");
-        return;
-    }
+    if (!selectedSeat) return alert("Please select a seat!");
 
     setIsBookingLoading(true);
 
     try {
-        const { error } = await supabase.from('tickets').insert({
-            user_id: currentUser.id,
-            venue_id: venue.id,
-            venue_name: venue.name,
-            guest_name: currentUser.email,
-            guest_phone: "N/A", 
-            date: new Date().toISOString(),
-            admit_count: guestCount,
-            seat_label: selectedSeat.label,
-            status: 'confirmed'
+        // CALL THE SECURE SQL FUNCTION
+        const { data, error } = await supabase.rpc('book_ticket', {
+            p_venue_id: venue.id,
+            p_user_id: currentUser.id,
+            p_seat_label: selectedSeat.label,
+            p_guest_count: guestCount,
+            p_guest_name: currentUser.email, // Or full name if available
+            p_total_price: selectedSeat.price
         });
 
         if (error) throw error;
-        setBookingStep(2);
+        
+        // If successful
+        setBookingStep(2); // Show success screen
 
     } catch (err: any) {
         alert("Booking Failed: " + err.message);
@@ -110,7 +105,6 @@ export default function VenueDetails() {
   }
 
   if (loading) return <div className="h-screen flex items-center justify-center bg-white"><Loader2 className="animate-spin text-blue-600"/></div>
-
   if (!venue) return null;
 
   return (
@@ -210,7 +204,6 @@ export default function VenueDetails() {
                 </div>
             </TabsContent>
 
-            {/* REVIEWS TAB - Using the new component */}
             <TabsContent value="reviews">
                  <div className="pb-20">
                      <ReviewSection venueId={venue.id} />
@@ -239,7 +232,14 @@ export default function VenueDetails() {
                   {bookingStep === 1 ? (
                       <>
                         <div className="flex-1 overflow-y-auto px-6 pb-24">
-                            <h3 className="text-2xl font-black text-slate-900 mb-1">Select Table</h3>
+                            <div className="flex justify-between items-center mb-1">
+                                <h3 className="text-2xl font-black text-slate-900">Select Table</h3>
+                                {/* SHOW WALLET BALANCE */}
+                                <div className="flex items-center gap-1 bg-green-50 px-3 py-1 rounded-full border border-green-100">
+                                    <Wallet className="w-3 h-3 text-green-600"/>
+                                    <span className="text-xs font-black text-green-700">₹{walletBalance.toLocaleString()}</span>
+                                </div>
+                            </div>
                             <p className="text-sm text-slate-500 mb-6">Pick your spot at {venue.name}</p>
 
                             {/* SEAT MAP */}
@@ -271,7 +271,7 @@ export default function VenueDetails() {
                             </div>
                         </div>
 
-                        {/* STICKY BOTTOM BAR */}
+                        {/* STICKY PAYMENT BAR */}
                         <div className="absolute bottom-0 left-0 w-full bg-white p-6 border-t border-slate-100 shadow-xl z-20">
                             {selectedSeat && (
                                 <div className="flex justify-between items-end mb-4">
@@ -291,10 +291,12 @@ export default function VenueDetails() {
                                 </Button>
                                 <Button 
                                     onClick={handleBookingSubmit} 
-                                    disabled={!selectedSeat || isBookingLoading}
-                                    className="flex-1 h-14 bg-slate-900 text-white font-bold rounded-2xl text-lg shadow-lg shadow-slate-200"
+                                    disabled={!selectedSeat || isBookingLoading || selectedSeat.price > walletBalance}
+                                    className={`flex-1 h-14 text-white font-bold rounded-2xl text-lg shadow-lg transition-all ${selectedSeat && selectedSeat.price > walletBalance ? 'bg-red-500 hover:bg-red-600' : 'bg-slate-900 hover:bg-slate-800'}`}
                                 >
-                                    {isBookingLoading ? <Loader2 className="animate-spin"/> : `Confirm Booking`}
+                                    {isBookingLoading ? <Loader2 className="animate-spin"/> : 
+                                      (selectedSeat && selectedSeat.price > walletBalance ? "Insufficient Funds" : "Pay & Book")
+                                    }
                                 </Button>
                             </div>
                         </div>
@@ -302,15 +304,16 @@ export default function VenueDetails() {
                   ) : (
                       <div className="flex-1 flex flex-col items-center justify-center text-center space-y-4 px-6">
                           <CheckCircle className="w-24 h-24 text-green-500 mx-auto animate-bounce" />
-                          <h3 className="text-3xl font-black text-slate-900">All Set!</h3>
+                          <h3 className="text-3xl font-black text-slate-900">Booking Confirmed!</h3>
                           <p className="text-slate-500 font-medium">
-                              Table <strong>{selectedSeat?.label}</strong> is reserved for <strong>{guestCount} people</strong>.
+                              Table <strong>{selectedSeat?.label}</strong> is reserved.<br/>
+                              <span className="text-green-600 font-bold">₹{selectedSeat?.price}</span> deducted from wallet.
                           </p>
                           <Button 
                               onClick={() => router.push('/tickets')}
                               className="w-full h-14 rounded-2xl bg-blue-600 text-white font-bold text-lg shadow-lg shadow-blue-200 mt-6"
                           >
-                              Open Wallet
+                              View Ticket in Wallet
                           </Button>
                       </div>
                   )}

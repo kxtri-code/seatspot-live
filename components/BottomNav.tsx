@@ -7,8 +7,9 @@ export default function BottomNav() {
   const pathname = usePathname()
   const router = useRouter()
 
-  // FORCE HIDE ON HOMEPAGE
-  // We check if the path is exactly '/'
+  // --- THE CRITICAL FIX ---
+  // If we are on the Homepage ('/'), return null immediately.
+  // This makes the nav bar invisible on the landing screen.
   if (pathname === '/') {
     return null
   }

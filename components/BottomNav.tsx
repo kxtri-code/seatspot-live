@@ -7,8 +7,11 @@ export default function BottomNav() {
   const pathname = usePathname()
   const router = useRouter()
 
-  // STRICT HIDE: If we are on the homepage ('/'), DO NOT RENDER.
-  if (pathname === '/') return null
+  // FORCE HIDE ON HOMEPAGE
+  // We check if the path is exactly '/'
+  if (pathname === '/') {
+    return null
+  }
 
   const navItems = [
     { label: 'Feed', icon: Home, path: '/explore' },

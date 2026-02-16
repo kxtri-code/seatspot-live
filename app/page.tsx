@@ -1,161 +1,92 @@
 "use client"
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
+import { useRouter } from 'next/navigation'
+import { Loader2, ArrowRight, Minus, Plus, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { ArrowRight, Minus, Plus } from 'lucide-react'
-import UserAvatar from '@/components/UserAvatar'
 
-// --- DEFAULT ASSETS (Fallbacks) ---
-const DEFAULT_ASSETS = {
-  club: {
-    image: "https://images.unsplash.com/photo-1566737236500-c8ac43014a67?q=80&w=1920&auto=format&fit=crop",
-    headline: "Own the Night.",
-    sub: "VIP Tables & Guestlists."
-  },
-  cafe: {
-    image: "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?q=80&w=1920&auto=format&fit=crop",
-    headline: "Morning Brew.",
-    sub: "Workspaces & Chill Spots."
-  },
-  dining: {
-    image: "https://images.unsplash.com/photo-1559339352-11d035aa65de?q=80&w=1920&auto=format&fit=crop",
-    headline: "Fine Tastes.",
-    sub: "Dates & Family Dinners."
-  },
-  lounge: {
-    image: "https://images.unsplash.com/photo-1572116469696-31de0f17cc34?q=80&w=1920&auto=format&fit=crop",
-    headline: "Just Vibe.",
-    sub: "Cocktails & Conversations."
-  }
-}
-
-type VibeType = keyof typeof DEFAULT_ASSETS;
-
-export default function LandingPage() {
+export default function Home() {
   const router = useRouter()
+  const [activeTab, setActiveTab] = useState('Club')
   const [guestCount, setGuestCount] = useState(2)
-  const [selectedVibe, setSelectedVibe] = useState<VibeType>('club')
-  const [isImageLoaded, setIsImageLoaded] = useState(false)
-  
-  // State for dynamic assets (God Mode)
-  const [assets, setAssets] = useState(DEFAULT_ASSETS)
+  const [venues, setVenues] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
 
-  // Fetch 'God Mode' assets from DB
   useEffect(() => {
-    const loadAssets = async () => {
-        const { data } = await supabase.from('cms_assets').select('*')
-        if (data && data.length > 0) {
-            const newAssets = { ...DEFAULT_ASSETS }
-            data.forEach(item => {
-                if (item.id === 'home_club_img') newAssets.club.image = item.content
-                if (item.id === 'home_club_txt') newAssets.club.headline = item.content
-                if (item.id === 'home_cafe_img') newAssets.cafe.image = item.content
-                if (item.id === 'home_cafe_txt') newAssets.cafe.headline = item.content
-            })
-            setAssets(newAssets)
-        }
+    async function loadVenues() {
+      const { data } = await supabase.from('venues').select('*')
+      if (data) setVenues(data)
+      setLoading(false)
     }
-    loadAssets()
+    loadVenues()
   }, [])
 
-  const handleSearch = () => {
-    router.push(`/explore?vibe=${selectedVibe}&guests=${guestCount}`)
-  }
+  // Find image for active tab - Defaults to the first Club found instantly
+  const activeVenue = venues.find(v => v.type === activeTab) || venues.find(v => v.type === 'Club') || venues[0]
+
+  if (loading) return <div className="h-screen flex items-center justify-center bg-black"><Loader2 className="animate-spin text-white" /></div>
 
   return (
-    <div className="h-screen w-full bg-black font-sans relative overflow-hidden flex flex-col justify-center pb-20">
+    <div className="relative min-h-screen w-full bg-black overflow-hidden font-sans">
       
-      {/* --- BACKGROUND LAYER --- */}
+      {/* 1. FULL SCREEN BACKGROUND IMAGE */}
       <div className="absolute inset-0 z-0">
-         {/* Dark Gradient Overlay for text readability */}
-         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-black/20 z-20" />
-         
-         <img 
-            src={assets[selectedVibe].image}
-            alt={selectedVibe}
-            key={selectedVibe}
-            onLoad={() => setIsImageLoaded(true)}
-            className={`w-full h-full object-cover transition-all duration-700 transform scale-105 ${isImageLoaded ? 'opacity-100 blur-0' : 'opacity-0 blur-lg'}`}
-         />
+          <img 
+            src={activeVenue?.image_url} 
+            className="w-full h-full object-cover opacity-60 scale-105 transition-all duration-1000"
+            alt="Background"
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black" />
       </div>
 
-      {/* --- FLOATING UI LAYER --- */}
-      <div className="relative z-30 w-full max-w-md mx-auto px-6 flex flex-col gap-8 mt-16">
-          
-          {/* HEADLINES */}
-          <div className="space-y-2 animate-in slide-in-from-bottom-8 duration-700">
-              <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-md px-3 py-1 rounded-full border border-white/10 mb-2">
-                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                  <span className="text-[10px] font-bold text-white uppercase tracking-widest">Dimapur Live</span>
-              </div>
-              <h1 className="text-6xl font-black text-white leading-none tracking-tighter drop-shadow-2xl">
-                  {assets[selectedVibe].headline}
-              </h1>
-              <p className="text-white/90 text-lg font-medium tracking-wide">
-                  {assets[selectedVibe].sub}
-              </p>
+      {/* 2. TOP LOGO & HEADER */}
+      <div className="relative z-10 p-8 pt-12">
+          <div className="flex items-center gap-2 mb-2">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+              <span className="text-[10px] font-black text-white uppercase tracking-widest opacity-80">Dimapur Live</span>
           </div>
+          <h1 className="text-7xl font-black text-white leading-none tracking-tighter drop-shadow-2xl">
+              Own the <br/> Night.
+          </h1>
+          <p className="text-xl text-white/70 mt-4 font-bold tracking-tight">VIP Tables & Guestlists.</p>
+      </div>
 
-          {/* ISLAND CONTROLLER */}
-          <div className="bg-black/60 backdrop-blur-xl border border-white/10 p-2 rounded-[2.5rem] shadow-2xl animate-in slide-in-from-bottom-4 duration-700 delay-100">
+      {/* 3. INTERACTIVE SEARCH BAR (Floating) */}
+      <div className="absolute bottom-12 left-0 w-full px-6 z-20">
+          <div className="bg-black/40 backdrop-blur-3xl p-6 rounded-[3rem] border border-white/10 shadow-2xl animate-in slide-in-from-bottom-8 duration-700">
               
-              {/* Vibe Tabs */}
-              <div className="flex justify-between items-center p-1 bg-white/5 rounded-[2rem] mb-2 relative">
-                  {(Object.keys(DEFAULT_ASSETS) as Array<VibeType>).map((vibe) => (
-                      <button 
-                        key={vibe}
-                        onClick={() => setSelectedVibe(vibe)}
-                        className={`flex-1 py-4 rounded-[1.8rem] text-[10px] font-bold uppercase tracking-widest transition-all duration-300 ${selectedVibe === vibe ? 'bg-white text-black shadow-lg scale-105' : 'text-white/50 hover:text-white'}`}
+              {/* Category Filter */}
+              <div className="flex gap-2 overflow-x-auto pb-4 no-scrollbar">
+                  {['Club', 'Cafe', 'Dining', 'Lounge'].map((tab) => (
+                      <button
+                        key={tab}
+                        onClick={() => setActiveTab(tab)}
+                        className={`px-6 py-3 rounded-full text-xs font-black uppercase transition-all whitespace-nowrap ${activeTab === tab ? 'bg-white text-black' : 'text-white/40 hover:text-white'}`}
                       >
-                          {vibe}
+                          {tab}
                       </button>
                   ))}
               </div>
 
-              {/* Action Bar */}
-              <div className="flex gap-2 p-1">
-                  {/* Guest Counter */}
-                  <div className="flex items-center gap-3 bg-white/5 rounded-[1.8rem] px-6 w-1/3 justify-between border border-white/5">
-                      <button onClick={() => setGuestCount(Math.max(1, guestCount - 1))} className="text-white/50 hover:text-white active:scale-90 transition-transform"><Minus className="w-5 h-5"/></button>
-                      <span className="text-white font-black text-lg">{guestCount}</span>
-                      <button onClick={() => setGuestCount(Math.min(10, guestCount + 1))} className="text-white/50 hover:text-white active:scale-90 transition-transform"><Plus className="w-5 h-5"/></button>
+              {/* Guest Count & Let's Go */}
+              <div className="flex items-center gap-4 mt-2">
+                  <div className="bg-white/10 rounded-full flex items-center gap-5 p-2 px-6 border border-white/10">
+                      <button onClick={() => setGuestCount(Math.max(1, guestCount - 1))} className="text-white hover:text-blue-400"><Minus className="w-4 h-4"/></button>
+                      <span className="text-white font-black text-xl w-4 text-center">{guestCount}</span>
+                      <button onClick={() => setGuestCount(guestCount + 1)} className="text-white hover:text-blue-400"><Plus className="w-4 h-4"/></button>
                   </div>
 
-                  {/* Let's Go Button */}
                   <Button 
-                    onClick={handleSearch}
-                    className="flex-1 h-16 bg-white text-black font-black text-lg rounded-[1.8rem] hover:bg-slate-200 transition-all active:scale-95 group shadow-[0_0_20px_rgba(255,255,255,0.3)]"
+                    onClick={() => router.push('/explore')}
+                    className="flex-1 h-14 rounded-full bg-white text-black font-black text-lg hover:scale-[1.02] transition-transform active:scale-95 group"
                   >
                       Let's Go 
-                      <div className="w-8 h-8 bg-black rounded-full flex items-center justify-center ml-3 group-hover:rotate-45 transition-transform duration-300">
-                          <ArrowRight className="w-4 h-4 text-white" />
-                      </div>
+                      <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
                   </Button>
               </div>
           </div>
       </div>
-      
-      {/* --- TRANSPARENT HOME HEADER --- */}
-      <div className="fixed top-0 left-0 w-full p-6 flex justify-between items-center z-50 pointer-events-none">
-          {/* Header Gradient for Visibility */}
-          <div className="absolute top-0 left-0 w-full h-32 bg-gradient-to-b from-black/80 to-transparent -z-10 pointer-events-none" />
-
-          {/* Logo */}
-          <div className="flex items-center gap-2 pointer-events-auto">
-            <div className="w-8 h-8 bg-white rounded-xl flex items-center justify-center shadow-lg">
-                <div className="w-4 h-4 bg-black rounded-full" />
-            </div>
-            <span className="text-white font-black text-xl tracking-tighter drop-shadow-lg">SeatSpot.</span>
-          </div>
-          
-          {/* Avatar */}
-          <div className="pointer-events-auto">
-             <UserAvatar className="w-10 h-10 border-2 border-white/20" />
-          </div>
-      </div>
-
     </div>
   )
 }

@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { Loader2, ArrowRight, Minus, Plus, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
-// DEFAULT IMAGES (Instant Load)
+// High-quality fallback images for each vibe
 const FALLBACK_IMAGES: Record<string, string> = {
   'Club': 'https://images.unsplash.com/photo-1566737236580-c8d48ff63aef?q=80&w=1920&auto=format&fit=crop',
   'Cafe': 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?q=80&w=1920&auto=format&fit=crop',
@@ -21,37 +21,39 @@ export default function Home() {
   const [venues, setVenues] = useState<any[]>([])
   const [user, setUser] = useState<any>(null)
   
-  // Load User Data
   useEffect(() => {
     async function init() {
       const { data: { user } } = await supabase.auth.getUser()
       setUser(user)
+      // Fetch venues to potentially use their images
       const { data } = await supabase.from('venues').select('*')
       if (data) setVenues(data)
     }
     init()
   }, [])
 
-  // LOGIC: Use Database image if available, otherwise use INSTANT fallback
+  // LOGIC: Try to find a venue image for the active tab, otherwise use the fallback
   const dbVenue = venues.find(v => v.type === activeTab)
   const bgImage = dbVenue?.image_url || FALLBACK_IMAGES[activeTab]
 
   return (
-    <div className="relative h-[100dvh] w-full bg-black font-sans text-white overflow-hidden">
+    // Use fixed inset-0 to ensure full screen coverage and no scrolling
+    <div className="fixed inset-0 w-full h-full bg-black font-sans text-white overflow-hidden">
       
-      {/* 1. BACKGROUND LAYER (Fixed & Full) */}
+      {/* 1. BACKGROUND LAYER (Absolute & Full) */}
       <div className="absolute inset-0 z-0">
+          {/* Key forces re-render for fade effect on change */}
           <img 
-            key={activeTab} // Forces animation when tab changes
+            key={activeTab} 
             src={bgImage} 
             className="w-full h-full object-cover opacity-60 animate-in fade-in duration-700"
-            alt="Vibe"
+            alt={activeTab}
           />
-          <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-black/10 to-black" />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-black/20 to-black" />
       </div>
 
-      {/* 2. HEADER */}
-      <div className="relative z-20 flex justify-between items-center px-6 pt-12">
+      {/* 2. HEADER LAYER (Fixed Top) */}
+      <div className="absolute top-0 left-0 w-full z-20 flex justify-between items-center p-6 pt-12 safe-area-top">
           <div className="flex flex-col">
               <span className="text-2xl font-black tracking-tighter">SeatSpot.</span>
               <div className="flex items-center gap-1.5 mt-1 bg-white/10 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10 w-fit">
@@ -71,9 +73,9 @@ export default function Home() {
           </button>
       </div>
 
-      {/* 3. CENTER TEXT (No Overlap) */}
-      <div className="relative z-10 px-6 mt-12 flex flex-col justify-center h-[40vh]">
-          <h1 className="text-6xl font-black leading-[0.9] tracking-tighter drop-shadow-2xl">
+      {/* 3. CENTER TEXT LAYER (Absolute Position) */}
+      <div className="absolute inset-0 z-10 flex flex-col justify-center px-6 pointer-events-none">
+          <h1 className="text-6xl font-black leading-[0.85] tracking-tighter drop-shadow-2xl">
               What's <br/> Your Vibe?
           </h1>
           <p className="text-lg text-slate-300 mt-5 font-medium max-w-[280px] leading-snug shadow-black drop-shadow-md">
@@ -81,8 +83,8 @@ export default function Home() {
           </p>
       </div>
 
-      {/* 4. BOTTOM ACTION BOX (Fixed at Bottom) */}
-      <div className="absolute bottom-8 left-0 w-full px-4 z-20">
+      {/* 4. BOTTOM ACTION BOX (Fixed Bottom) */}
+      <div className="absolute bottom-0 left-0 w-full p-6 pb-10 z-20 safe-area-bottom">
           <div className="bg-white/10 backdrop-blur-3xl p-5 rounded-[2.5rem] border border-white/10 shadow-2xl">
               
               {/* Tabs */}

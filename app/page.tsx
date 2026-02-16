@@ -6,9 +6,9 @@ import { useRouter } from 'next/navigation'
 import { Loader2, ArrowRight, Minus, Plus, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
-// High-quality fallback images for each vibe
+// HIGH-QUALITY, TEXT-FREE BACKGROUNDS
 const FALLBACK_IMAGES: Record<string, string> = {
-  'Club': 'https://images.unsplash.com/photo-1566737236580-c8d48ff63aef?q=80&w=1920&auto=format&fit=crop',
+  'Club': 'https://images.unsplash.com/photo-1574391884720-385e68339561?q=80&w=1920&auto=format&fit=crop', // Clean Crowd Shot
   'Cafe': 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?q=80&w=1920&auto=format&fit=crop',
   'Dining': 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?q=80&w=1920&auto=format&fit=crop',
   'Lounge': 'https://images.unsplash.com/photo-1572116469696-31de0f17cc34?q=80&w=1920&auto=format&fit=crop'
@@ -32,28 +32,28 @@ export default function Home() {
     init()
   }, [])
 
-  // LOGIC: Try to find a venue image for the active tab, otherwise use the fallback
+  // LOGIC: Prefer Database Image -> Fallback to Instant Image
   const dbVenue = venues.find(v => v.type === activeTab)
   const bgImage = dbVenue?.image_url || FALLBACK_IMAGES[activeTab]
 
   return (
-    // Use fixed inset-0 to ensure full screen coverage and no scrolling
+    // CONTAINER: Fixed to viewport, no scrolling, black background
     <div className="fixed inset-0 w-full h-full bg-black font-sans text-white overflow-hidden">
       
-      {/* 1. BACKGROUND LAYER (Absolute & Full) */}
+      {/* 1. BACKGROUND LAYER */}
       <div className="absolute inset-0 z-0">
-          {/* Key forces re-render for fade effect on change */}
           <img 
-            key={activeTab} 
+            key={activeTab} // Forces fade animation on tab change
             src={bgImage} 
             className="w-full h-full object-cover opacity-60 animate-in fade-in duration-700"
             alt={activeTab}
           />
+          {/* Gradient to make text readable */}
           <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-black/20 to-black" />
       </div>
 
-      {/* 2. HEADER LAYER (Fixed Top) */}
-      <div className="absolute top-0 left-0 w-full z-20 flex justify-between items-center p-6 pt-12 safe-area-top">
+      {/* 2. HEADER LAYER (Top) */}
+      <div className="absolute top-0 left-0 w-full z-20 flex justify-between items-center p-6 pt-12">
           <div className="flex flex-col">
               <span className="text-2xl font-black tracking-tighter">SeatSpot.</span>
               <div className="flex items-center gap-1.5 mt-1 bg-white/10 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10 w-fit">
@@ -61,6 +61,8 @@ export default function Home() {
                   <span className="text-[9px] font-black uppercase tracking-widest">Dimapur Live</span>
               </div>
           </div>
+          
+          {/* Profile Button */}
           <button 
             onClick={() => router.push(user ? '/profile' : '/login')} 
             className="w-10 h-10 rounded-full border-2 border-white/20 overflow-hidden bg-slate-800 flex items-center justify-center active:scale-95 transition-transform"
@@ -73,7 +75,7 @@ export default function Home() {
           </button>
       </div>
 
-      {/* 3. CENTER TEXT LAYER (Absolute Position) */}
+      {/* 3. CENTER TEXT LAYER */}
       <div className="absolute inset-0 z-10 flex flex-col justify-center px-6 pointer-events-none">
           <h1 className="text-6xl font-black leading-[0.85] tracking-tighter drop-shadow-2xl">
               What's <br/> Your Vibe?
@@ -84,10 +86,10 @@ export default function Home() {
       </div>
 
       {/* 4. BOTTOM ACTION BOX (Fixed Bottom) */}
-      <div className="absolute bottom-0 left-0 w-full p-6 pb-10 z-20 safe-area-bottom">
+      <div className="absolute bottom-0 left-0 w-full p-6 pb-10 z-20">
           <div className="bg-white/10 backdrop-blur-3xl p-5 rounded-[2.5rem] border border-white/10 shadow-2xl">
               
-              {/* Tabs */}
+              {/* Category Tabs */}
               <div className="flex gap-2 mb-4 overflow-x-auto no-scrollbar">
                   {['Club', 'Cafe', 'Dining', 'Lounge'].map((tab) => (
                       <button
@@ -100,7 +102,7 @@ export default function Home() {
                   ))}
               </div>
 
-              {/* Action Buttons */}
+              {/* Counter & Action Button */}
               <div className="flex items-center gap-3">
                   <div className="h-14 bg-black/40 rounded-full flex items-center gap-4 px-6 border border-white/5">
                       <button onClick={() => setGuestCount(Math.max(1, guestCount - 1))} className="text-white/50 hover:text-white active:scale-75 transition-all"><Minus className="w-4 h-4"/></button>
